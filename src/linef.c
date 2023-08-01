@@ -99,6 +99,30 @@ static void To_dbl(DBL *, Long, Long);
 
 static void Pow(Long, Long, Long, Long);
 
+#ifdef __FreeBSD__
+static char *_fcvt(double value, int ndigit, int *__restrict__ decpt, int *__restrict__ sign)
+{
+    static char buf[100];
+
+    *sign = (value < 0) ? 1 : 0;
+    if (value < 0) {
+        value = -value;
+    }
+
+    snprintf(buf, sizeof(buf), "%.*f", ndigit, value);
+
+    char *dot_position = strchr(buf, '.');
+    if (dot_position != NULL) {
+        *decpt = dot_position - buf;
+        memmove(dot_position, dot_position + 1, strlen(dot_position));
+    } else {
+        *decpt = strlen(buf);
+    }
+
+    return buf;
+}
+#endif
+
 /*
  　機能：FLOAT CALLを実行する
  戻り値： true = 実行終了

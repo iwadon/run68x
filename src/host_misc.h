@@ -18,7 +18,7 @@
 #ifndef HOST_MISC_H
 #define HOST_MISC_H
 
-#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__) || defined(__FreeBSD__)
 #include "run68.h"
 
 RegPair IocsOntime_time(void);

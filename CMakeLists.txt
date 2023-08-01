@@ -54,7 +54,7 @@ if(WIN32)
     src/host_win32.h
   )
 endif()
-if(APPLE OR EMSCRIPTEN)
+if(APPLE OR EMSCRIPTEN OR BSD)
   target_sources(${PROJECT_NAME} PRIVATE
     src/host_misc.c
     src/host_misc.h

@@ -63,7 +63,7 @@ static Long Open(char *, short);
 static Long Close(short);
 static Long Fgets(Long, short);
 static Long Write(short, Long, Long);
-#if defined(__APPLE__) || defined(__linux__) || defined(__EMSCRIPTEN__)
+#if defined(__APPLE__) || defined(__linux__) || defined(__EMSCRIPTEN__) || defined(__FreeBSD__)
 static Long Write_conv(short, void *, size_t);
 #endif
 static Long Delete(char *);
@@ -1628,7 +1628,7 @@ static Long Write(short hdl, Long buf, Long len) {
   return (write_len);
 }
 
-#if defined(__APPLE__) || defined(__linux__) || defined(__EMSCRIPTEN__)
+#if defined(__APPLE__) || defined(__linux__) || defined(__EMSCRIPTEN__) || defined(__FreeBSD__)
 static Long Write_conv(short hdl, void *buf, size_t size) {
   Long write_len;
   FILE *fp = finfo[hdl].host.fp;
