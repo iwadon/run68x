@@ -30,7 +30,7 @@ static bool linea(char *pc_ptr) {
   short save_s = SR_S_REF();
   SR_S_ON();
 
-  Long adr = mem_get(VECNO_ALINE * 4, S_LONG);
+  ULong adr = mem_get(VECNO_ALINE * 4, S_LONG);
   if (adr != DefaultExceptionHandler[VECNO_ALINE]) {
     ra[7] -= 4;
     mem_set(ra[7], pc, S_LONG);
@@ -411,8 +411,8 @@ void OPBuf_display(int n) {
   if (max < n) n = max;
   print(
       "** EXECUTED INSTRUCTION HISTORY **\n"
-      "ADDRESS OPCODE                    MNEMONIC\n"
-      "-------------------------------------------------------\n");
+        "ADDRESS OPCODE                    MNEMONIC\n"
+        "-------------------------------------------------------\n");
   for (i = n - 1; 0 <= i; i--) {
     char hex[128];
     const EXEC_INSTRUCTION_INFO *op = OPBuf_getentry(i);

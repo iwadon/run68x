@@ -1203,7 +1203,7 @@ static void Pow(Long d0, Long d1, Long d2, Long d3) {
          false = 実行継続
 */
 static bool fefunc(UByte code) {
-  Long adr;
+  ULong adr;
   short save_s;
 
   /* F系列のベクタが書き換えられているかどうか検査 */
