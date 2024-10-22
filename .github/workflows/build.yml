@@ -30,9 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Ninja
-        if: matrix.cmake_generator == 'Ninja'
+      - name: Install Ninja (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install ninja-build
+      - name: Install Ninja (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install ninja
 
       - name: Configure CMake
         run: >
