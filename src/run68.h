@@ -303,6 +303,7 @@ typedef enum {
   RUN68_COMMAND_RUN,     /* 環境を初期化してプログラム実行 */
   RUN68_COMMAND_SET,     /* メモリに値をセットする */
   RUN68_COMMAND_STEP,    /* 一命令分ステップ実行 */
+  RUN68_COMMAND_SYM,     /* シンボルテーブル表示 */
   RUN68_COMMAND_WATCHC,  /* 命令ウォッチ */
   RUN68_COMMAND_NULL,    /* コマンドではない(移動禁止) */
   RUN68_COMMAND_ERROR    /* コマンドエラー(移動禁止) */

@@ -43,6 +43,7 @@ static char* command_name[] = {
     "RUN",     /* 環境を初期化してプログラム実行 */
     "SET",     /* メモリに値をセットする */
     "STEP",    /* 一命令分ステップ実行 */
+    "SYM",     /* シンボルテーブル表示 */
     "WATCHC"   /* 命令ウォッチ */
 };
 
@@ -53,6 +54,7 @@ static void display_history(int argc, char** argv);
 static void display_list(int argc, char** argv);
 static void run68_dump(int argc, char** argv);
 static void display_registers();
+static void display_all_symbols();
 static void set_breakpoint(int argc, char** argv);
 static void clear_breakpoint();
 static ULong get_stepcount(int argc, char** argv);
@@ -244,6 +246,9 @@ RUN68_COMMAND debugger(bool running) {
         }
         stepcount = get_stepcount(argc, argv);
         goto EndOfLoop;
+      case RUN68_COMMAND_SYM: /* シンボルテーブル表示 */
+        display_all_symbols();
+        break;
       case RUN68_COMMAND_WATCHC: /* 命令ウォッチ */
         cwatchpoint = watchcode(argc, argv);
         break;
@@ -278,7 +283,8 @@ static void display_help() {
       "run             - Run Human68k program from the begining.\n"
       "step            - Execute only one instruction.\n"
       "step n          - Continue running with showing all registers\n"
-      "                  and stops after executing n instructions.\n";
+      "                  and stops after executing n instructions.\n"
+      "sym             - Display all symbols in the symbol table.\n";
   print(help);
 }
 
@@ -378,6 +384,20 @@ static void display_registers() {
   }
   print("\n");
   printFmt("  PC=%08X    SR=%04X\n", pc, sr);
+}
+
+void display_all_symbols() {
+  Symbol* sym = get_symbol_table_head();
+  if (!sym) {
+    print("No symbols in the symbol table.\n");
+    return;
+  }
+  print("Address  Name\n");
+  print("-------- ----------------\n");
+  while (sym) {
+    printFmt("%08X %s\n", sym->address, sym->name);
+    sym = sym->next;
+  }
 }
 
 static void set_breakpoint(int argc, char** argv) {

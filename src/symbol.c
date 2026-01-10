@@ -10,7 +10,7 @@ Symbol* add_symbol(ULong name_offset, ULong name_length, ULong address,
                    UWord type) {
   Symbol* new_symbol = (Symbol*)malloc(sizeof(Symbol) + name_length);
   if (new_symbol == NULL) {
-    return NULL;  // メモリ確保失敗
+    return NULL; /* メモリ確保失敗 */
   }
 
   new_symbol->address = address;
@@ -18,7 +18,7 @@ Symbol* add_symbol(ULong name_offset, ULong name_length, ULong address,
   char* name_buf = malloc(name_length + 1);
   if (name_buf == NULL) {
     free(new_symbol);
-    return NULL;  // メモリ確保失敗
+    return NULL; /* メモリ確保失敗 */
   }
   memcpy(name_buf,
          (char*)GetReadableMemorySuper(name_offset, name_length).bufptr,
@@ -27,8 +27,13 @@ Symbol* add_symbol(ULong name_offset, ULong name_length, ULong address,
   strcpy(new_symbol->name, name_buf);
   free(name_buf);
 
-  new_symbol->next = symbol_table->next;
-  symbol_table->next = new_symbol;
+  /* アドレス順に挿入(先着順) */
+  Symbol* current = symbol_table;
+  while (current->next != NULL && current->next->address <= address) {
+    current = current->next;
+  }
+  new_symbol->next = current->next;
+  current->next = new_symbol;
 
   return new_symbol;
 }
@@ -54,6 +59,8 @@ Symbol* find_symbol_by_name(const char* name) {
   }
   return NULL;
 }
+
+Symbol* get_symbol_table_head(void) { return symbol_table->next; }
 
 void dump_symbol_table(void) {
   Symbol* current = symbol_table->next;

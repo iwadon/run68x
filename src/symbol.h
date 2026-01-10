@@ -13,6 +13,7 @@ typedef struct Symbol {
 Symbol* add_symbol(ULong name_offset, ULong name_length, ULong address, UWord type);
 Symbol* find_symbol_by_address(ULong address);
 Symbol* find_symbol_by_name(const char* name);
+Symbol* get_symbol_table_head(void);
 void dump_symbol_table(void);
 
 #endif
