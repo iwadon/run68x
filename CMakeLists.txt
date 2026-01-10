@@ -41,6 +41,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   src/load.c
   src/mem.c
   src/run68.c
+  src/symbol.c
 )
 if(WIN32)
   target_sources(${PROJECT_NAME} PRIVATE

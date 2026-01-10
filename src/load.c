@@ -31,6 +31,7 @@
 #include "mem.h"
 #include "operate.h"
 #include "run68.h"
+#include "symbol.h"
 
 static UByte xhead[XHEAD_SIZE];
 
@@ -181,6 +182,32 @@ static bool xrelocate(Long reloc_adr, Long reloc_size, Long read_top) {
   return true;
 }
 
+static void load_symbols(ULong sym_adr, ULong sym_size, Long read_top) {
+  ULong offset = 0;
+  while (offset < sym_size) {
+    UWord type = mem_get(read_top + sym_adr + offset, S_WORD);
+    offset += 2;
+    ULong address = mem_get(read_top + sym_adr + offset, S_LONG);
+    offset += 4;
+
+    // シンボル名の長さを取得。終端文字まで。
+    ULong name_start = offset;
+    while (offset < sym_size) {
+      char c = (char)mem_get(read_top + sym_adr + offset++, S_BYTE);
+      if (c == '\0') {
+        break;
+      }
+    }
+    ULong name_length = offset - name_start - 1;  // 終端文字を除く
+    add_symbol(read_top + sym_adr + name_start, name_length, read_top + address,
+               type);
+
+    if ((offset & 1) != 0) {
+      ++offset;
+    }
+  }
+}
+
 /*
  　機能：Xファイルをコンバートする
  戻り値： 0 = エラー
@@ -198,6 +225,7 @@ static Long xfile_cnv(Long* prog_size, Long* prog_sz2, Long read_top,
   Long data_size = xhead_getl(0x10);
   Long bss_size = xhead_getl(0x14);
   Long reloc_size = xhead_getl(0x18);
+  Long symbol_size = xhead_getl(0x1C);
   Long textAndData = code_size + data_size;
 
   if (reloc_size != 0) {
@@ -205,6 +233,10 @@ static Long xfile_cnv(Long* prog_size, Long* prog_sz2, Long read_top,
       onError("未対応のリロケート情報があります\n");
       return (0);
     }
+  }
+
+  if (symbol_size != 0) {
+    load_symbols(textAndData + reloc_size, symbol_size, read_top);
   }
 
   ULong bss_top = read_top + textAndData;
