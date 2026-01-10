@@ -22,6 +22,7 @@
 
 #include "mem.h"
 #include "run68.h"
+#include "symbol.h"
 
 /* デバッグモードのプロンプト */
 #define PROMPT "(run68)"
@@ -471,6 +472,11 @@ static void print1line(Long addr, Long naddr, const char* opstr) {
     hex[j] = ' ';
   }
   hex[j] = '\0';
+
+  Symbol* sym = find_symbol_by_address((ULong)addr);
+  if (sym) {
+    printFmt("%s:\n", sym->name);
+  }
 
   printFmt("%s%s\n", hex, opstr ? opstr : "\?\?\?");
 }
