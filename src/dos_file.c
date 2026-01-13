@@ -383,7 +383,7 @@ void ClearFinfo(int fileno) {
 }
 
 // オープンしたファイルの情報をfinfoに書き込む。
-FILEINFO* SetFinfo(int fileno, HostFileInfoMember hostfile, FileOpenMode mode,
+FILEINFO* SetFinfo(Long fileno, HostFileInfoMember hostfile, FileOpenMode mode,
                    unsigned int nest) {
   FILEINFO* f = &finfo[fileno];
 
@@ -395,6 +395,8 @@ FILEINFO* SetFinfo(int fileno, HostFileInfoMember hostfile, FileOpenMode mode,
 
   return f;
 }
+
+FILEINFO* GetFinfo(Long fileno) { return &finfo[fileno]; }
 
 void FreeOnmemoryFile(FILEINFO* finfop) {
   if (!finfop->onmemory.buffer) return;

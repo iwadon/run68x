@@ -40,6 +40,7 @@ Long DosNewfile(ULong param);
 void ClearFinfo(int fileno);
 FILEINFO* SetFinfo(Long fileno, HostFileInfoMember hostfile, FileOpenMode mode,
                    unsigned int nest);
+FILEINFO* GetFinfo(Long fileno);
 void FreeOnmemoryFile(FILEINFO* finfop);
 void ReadOnmemoryFile(FILEINFO* finfop, FileOpenMode openMode);
 
