@@ -1807,6 +1807,29 @@ static Long Getfcb(short fhdl) {
       return adr;
     default:
       fcb[3][14] = (unsigned char)fhdl;
+      if (fhdl >= 5) {
+        FILEINFO* fi = GetFinfo(fhdl);
+        if (fi->is_opened) {
+          // ファイルサイズ
+          int i = ftell(fi->host.fp);
+          int err = fseek(fi->host.fp, 0, SEEK_END);
+          if (err == 0) {
+            long size = ftell(fi->host.fp);
+            fcb[3][64] = (unsigned char)((size & 0xff000000) >> 24);
+            fcb[3][65] = (unsigned char)((size & 0x00ff0000) >> 16);
+            fcb[3][66] = (unsigned char)((size & 0x0000ff00) >> 8);
+            fcb[3][67] = (unsigned char)(size & 0x000000ff);
+          }
+          fseek(fi->host.fp, i, SEEK_SET);
+
+          // 日時
+          Long dt = HOST_GET_FILEDATE(fi);
+          fcb[3][58] = (unsigned char)((dt & 0x0000ff00) >> 8);
+          fcb[3][59] = (unsigned char)(dt & 0x000000ff);
+          fcb[3][60] = (unsigned char)((dt & 0xff000000) >> 24);
+          fcb[3][61] = (unsigned char)((dt & 0x00ff0000) >> 16);
+        }
+      }
       memcpy(mem.bufptr, fcb[3], SIZEOF_FCB);
       return adr;
   }
