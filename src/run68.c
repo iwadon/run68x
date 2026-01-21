@@ -64,6 +64,7 @@ static const Settings defaultSettings = {
     false,  // traceFunc
     false,  // debug
     false,  // readFileUtf8
+    false,  // exitOnError
 
     false  // iothrough
 };
@@ -210,7 +211,7 @@ static int exec_notrap(bool* restart) {
   NextInstruction:
     /* PCの値を保存する */
     OP_info.pc = pc;
-    if (setjmp(jmp_when_abort) != 0) {
+    if (!settings.exitOnError && setjmp(jmp_when_abort) != 0) {
       settings.debug = true;
       continue;
     }
@@ -378,6 +379,14 @@ Restart:
             break;
           }
           invalid_flag = true;
+          break;
+        }
+        case 'e': {
+          if (strcmp(argv[i], "-exit-on-error") != 0) {
+            invalid_flag = true;
+            break;
+          }
+          settings.exitOnError = true;
           break;
         }
         default:
