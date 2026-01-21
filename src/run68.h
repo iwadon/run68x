@@ -182,6 +182,7 @@ typedef struct {
   bool traceFunc;     // -f ファンクションコールトレース
   bool debug;         // -debug デバッガ有効
   bool readFileUtf8;  // -read-file-utf8
+  bool exitOnError;   // -exit-on-error
 
   bool iothrough;
 } Settings;

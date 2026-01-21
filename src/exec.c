@@ -260,6 +260,9 @@ void run68_abort(Long adr) {
   printf("\n");
   printf("  pc=%08lx    sr=%04x\n", pc, sr);
 #endif
+  if (settings.exitOnError) {
+    exit(EXIT_FAILURE);
+  }
   longjmp(jmp_when_abort, 2);
 }
 
