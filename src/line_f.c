@@ -822,6 +822,44 @@ static void Ftst(Long d0) {
 }
 
 /*
+ 　機能：FEFUNC _FADDを実行する＜エラーは未サポート＞
+ 戻り値：演算結果
+*/
+static Long Fadd(Long d0, Long d1) {
+  FLT arg1 = LongToFLT(d0);
+  FLT arg2 = LongToFLT(d1);
+
+  CCR_C_OFF();
+  arg1.flt = arg1.flt + arg2.flt;
+
+  d0 = (arg1.c[3] << 24);
+  d0 |= (arg1.c[2] << 16);
+  d0 |= (arg1.c[1] << 8);
+  d0 |= arg1.c[0];
+
+  return (d0);
+}
+
+/*
+ 　機能：FEFUNC _FSUBを実行する＜エラーは未サポート＞
+ 戻り値：演算結果
+*/
+static Long Fsub(Long d0, Long d1) {
+  FLT arg1 = LongToFLT(d0);
+  FLT arg2 = LongToFLT(d1);
+
+  CCR_C_OFF();
+  arg1.flt = arg1.flt - arg2.flt;
+
+  d0 = (arg1.c[3] << 24);
+  d0 |= (arg1.c[2] << 16);
+  d0 |= (arg1.c[1] << 8);
+  d0 |= arg1.c[0];
+
+  return (d0);
+}
+
+/*
  　機能：FEFUNC _FMULを実行する＜エラーは未サポート＞
  戻り値：演算結果
 */
@@ -1378,6 +1416,12 @@ static bool fefunc(UByte code) {
       break;
     case 0x58:
       Ftst(rd[0]);
+      break;
+    case 0x5B:
+      rd[0] = Fadd(rd[0], rd[1]);
+      break;
+    case 0x5C:
+      rd[0] = Fsub(rd[0], rd[1]);
       break;
     case 0x5D:
       rd[0] = Fmul(rd[0], rd[1]);
