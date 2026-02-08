@@ -184,6 +184,19 @@ static void Ftod(Long d0) {
   From_dbl(&ret, 0);
 }
 
+static Long Dtof(Long d0, Long d1) {
+  DBL arg;
+  To_dbl(&arg, d0, d1);
+  FLT ret = {.flt = (float)arg.dbl};
+
+  Long result = (ret.c[3] << 24);
+  result |= (ret.c[2] << 16);
+  result |= (ret.c[1] << 8);
+  result |= ret.c[0];
+
+  return (result);
+}
+
 /*
  　機能：数字文字列の数字以外の部分までの長さを求める
  戻り値：長さ
@@ -822,6 +835,44 @@ static void Ftst(Long d0) {
 }
 
 /*
+ 　機能：FEFUNC _FCMPを実行する
+ 戻り値：なし
+*/
+static void Fcmp(Long d0, Long d1) {
+  FLT arg1 = LongToFLT(d0);
+  FLT arg2 = LongToFLT(d1);
+
+  arg1.flt = arg1.flt - arg2.flt;
+  if (arg1.flt < 0) {
+    CCR_N_C_ON();
+    CCR_Z_OFF();
+  } else if (arg1.flt > 0) {
+    CCR_N_C_OFF();
+    CCR_Z_OFF();
+  } else {
+    CCR_N_C_OFF();
+    CCR_Z_ON();
+  }
+}
+
+/*
+ 　機能：FEFUNC _FNEGを実行する
+ 戻り値：演算結果
+*/
+static Long Fneg(Long d0) {
+  FLT arg = LongToFLT(d0);
+
+  arg.flt = -arg.flt;
+
+  d0 = (arg.c[3] << 24);
+  d0 |= (arg.c[2] << 16);
+  d0 |= (arg.c[1] << 8);
+  d0 |= arg.c[0];
+
+  return (d0);
+}
+
+/*
  　機能：FEFUNC _FADDを実行する＜エラーは未サポート＞
  戻り値：演算結果
 */
@@ -1341,6 +1392,9 @@ static bool fefunc(UByte code) {
     case 0x1E:
       Ftod(rd[0]);
       break;
+    case 0x1F:
+      rd[0] = Dtof(rd[0], rd[1]);
+      break;
     case 0x20:
       Val(ra[0]);
       break;
@@ -1416,6 +1470,12 @@ static bool fefunc(UByte code) {
       break;
     case 0x58:
       Ftst(rd[0]);
+      break;
+    case 0x59:
+      Fcmp(rd[0], rd[1]);
+      break;
+    case 0x5A:
+      rd[0] = Fneg(rd[0]);
       break;
     case 0x5B:
       rd[0] = Fadd(rd[0], rd[1]);
