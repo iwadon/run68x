@@ -33,6 +33,7 @@
 #include <windows.h>
 #else
 #include <dirent.h>
+#include <glob.h>
 #include <unistd.h>
 #endif
 
@@ -1124,6 +1125,318 @@ static Long Rename(Long old, Long new1) {
   return (0);
 }
 
+struct files_cache_slot_match_entry {
+  char name[23]; /* ファイル名 */
+  UByte attr;    /* 属性 */
+  UWord time;    /* 時間 */
+  UWord date;    /* 日付 */
+  ULong size;    /* ファイルサイズ */
+};
+struct files_cache_slot {
+  uint32_t id; /* ユニークID (ファイル検索バッファの内部ワークに保持する) */
+  int index;   /* 現在のインデックス */
+  int count;   /* 総マッチ数 */
+  struct files_cache_slot_match_entry* entries;
+};
+#define MAX_FILES_CACHE_SLOT_MATCH_ENTRIES 1024
+#define MAX_FILES_SLOTS 64
+static struct files_cache_slot* files_cache = NULL;
+static uint32_t files_cache_next_slot_id = 1;
+
+/*
+ 　機能：ファイル検索キャッシュスロットを取得する
+   パラメータ：
+     uint32_t id    <in>    スロットID
+   戻り値：
+     struct files_cache_slot* スロットポインタ(NULLなら取得失敗)
+ */
+struct files_cache_slot* get_files_cache_slot(uint32_t id) {
+  /* キャッシュが未確保ならNULLを返す */
+  if (!files_cache) {
+    return NULL;
+  }
+
+  /* 既存のスロットを検索 */
+  for (int i = 0; i < MAX_FILES_SLOTS; i++) {
+    if (files_cache[i].id == id) {
+      return &files_cache[i];
+    }
+  }
+
+  /* キャッシュスロットの割り当てに失敗 */
+  return NULL;
+}
+
+/*
+ 　機能：新しいファイル検索キャッシュスロットを作成する
+   戻り値：
+     struct files_cache_slot* スロットポインタ(NULLなら取得失敗)
+ */
+static struct files_cache_slot* create_new_files_cache_slot() {
+  /* キャッシュを確保 */
+  if (!files_cache) {
+    files_cache = (struct files_cache_slot*)calloc(
+        MAX_FILES_SLOTS, sizeof(struct files_cache_slot));
+  }
+
+  /* 未使用スロットを割り当てる */
+  for (int i = 0; i < MAX_FILES_SLOTS; i++) {
+    if (files_cache[i].id == 0) {
+      struct files_cache_slot* slot = &files_cache[i];
+      slot->id = files_cache_next_slot_id++;
+      slot->index = 0;
+      slot->count = 0;
+      slot->entries = (struct files_cache_slot_match_entry*)calloc(
+          MAX_FILES_CACHE_SLOT_MATCH_ENTRIES,
+          sizeof(struct files_cache_slot_match_entry));
+      if (!slot->entries) {
+        slot->id = 0;
+        return NULL;
+      }
+      return &files_cache[i];
+    }
+  }
+
+  /* キャッシュスロットの割り当てに失敗 */
+  return NULL;
+}
+
+/*
+ 　機能：ファイル名を主名と拡張子に分離する
+   パラメータ：
+     const char* full_name  <in>    フルファイル名
+     const char* dot        <in>    拡張子のドット位置(NULLなら拡張子なし)
+     char*       base_out   <out>   主名出力バッファ(19バイト以上)
+     char*       ext_out    <out>   拡張子出力バッファ(4バイト以上)
+ */
+static void split_name(const char* full_name, const char* dot, char* base_out,
+                       char* ext_out) {
+  /* 主名をコピー */
+  size_t base_len = dot ? (size_t)(dot - full_name) : strnlen(full_name, 22);
+  if (base_len > 18) base_len = 18;
+  strncpy(base_out, full_name, base_len);
+  base_out[base_len] = '\0';
+
+  /* 拡張子をコピー */
+  if (dot) {
+    size_t ext_len = strnlen(dot + 1, 3);
+    if (ext_len > 3) ext_len = 3;
+    strncpy(ext_out, dot + 1, ext_len);
+    ext_out[ext_len] = '\0';
+  } else {
+    ext_out[0] = '\0';
+  }
+}
+
+/**
+ * 　機能：ワイルドカードパターンマッチングを行う
+   パラメータ：
+     const char* pattern <in> ワイルドカードパターン
+     const char* name    <in> 比較する名前
+   戻り値：
+     bool マッチしたらtrue、しなければfalse
+ */
+static bool wildcard_cmp(const char* pattern, const char* name) {
+  while (*pattern && *name) {
+    if (*pattern == '?') {
+      pattern++;
+      name++;
+    } else if (*pattern == '*') {
+      pattern++;
+      if (*pattern == '\0') return true;
+      while (*name) {
+        if (wildcard_cmp(pattern, name)) return true;
+        name++;
+      }
+      return false;
+    } else {
+      if (toupper((unsigned char)*pattern) != toupper((unsigned char)*name))
+        return false;
+      pattern++;
+      name++;
+    }
+  }
+  while (*pattern == '*') pattern++;
+  return *pattern == '\0' && *name == '\0';
+}
+
+/*
+ * 　機能：HUMAN68K形式のワイルドカードマッチングを行う
+   パラメータ：
+     const char* pattern <in> ワイルドカードパターン
+     const char* name    <in> 比較する名前
+   戻り値：
+     bool マッチしたらtrue、しなければfalse
+ */
+static bool human68k_wildcard_match(const char* pattern, const char* name) {
+  /* パターンとファイル名を主名と拡張子に分離 */
+  const char* pat_dot = strchr(pattern, '.');
+  const char* name_dot = strchr(name, '.');
+  char pat_base[19];
+  char pat_ext[4];
+  char name_base[19];
+  char name_ext[4];
+  split_name(pattern, pat_dot, pat_base, pat_ext);
+  split_name(name, name_dot, name_base, name_ext);
+  if (!wildcard_cmp(pat_base, name_base)) return false;
+  if (!pat_dot) {
+    return name_dot == NULL || name_ext[0] == '\0';
+  }
+  return wildcard_cmp(pat_ext, name_ext);
+}
+
+/**
+ * 　機能：POSIXパスに基づいてファイル検索キャッシュスロットを構築する
+   パラメータ：
+     struct files_cache_slot* slot <in/out> キャッシュスロット
+     const char* posix_path         <in>    POSIX形式のパス
+ */
+static void build_files_cache_slot_posix(struct files_cache_slot* slot,
+                                         const char* posix_path) {
+  /* パターンをディレクトリとファイルに分割する */
+  char search_dir[1024];
+  const char* last_slash = strrchr(posix_path, '/');
+  if (last_slash) {
+    size_t dir_len = (size_t)(last_slash - posix_path);
+    if (dir_len >= sizeof(search_dir)) {
+      return;
+    }
+    strncpy(search_dir, posix_path, dir_len);
+    search_dir[dir_len] = '\0';
+  } else {
+    strcpy(search_dir, ".");
+  }
+  char file_pattern[256];
+  if (last_slash) {
+    strncpy(file_pattern, last_slash + 1, sizeof(file_pattern) - 1);
+    file_pattern[sizeof(file_pattern) - 1] = '\0';
+  } else {
+    strncpy(file_pattern, posix_path, sizeof(file_pattern) - 1);
+    file_pattern[sizeof(file_pattern) - 1] = '\0';
+  }
+
+  /* マッチするエントリを取得する */
+  struct stat st;
+  DIR* dir = opendir(search_dir);
+  if (!dir) {
+    return;
+  }
+  struct dirent* entry;
+  while ((entry = readdir(dir)) != NULL) {
+    /* 先頭が.の場合はスキップする */
+    if (entry->d_name[0] == '.') {
+      continue;
+    }
+
+    /* マッチングを確認する */
+    if (!human68k_wildcard_match(file_pattern, entry->d_name)) {
+      continue;
+    }
+
+    /* エントリ情報を取得する */
+    char full_path[1024];
+    snprintf(full_path, sizeof(full_path), "%s/%s", search_dir, entry->d_name);
+    if (stat(full_path, &st) != 0) {
+      continue;
+    }
+    /* エントリ情報をセットする */
+    struct files_cache_slot_match_entry* match_entry =
+        &slot->entries[slot->count];
+    strncpy(match_entry->name, entry->d_name, sizeof(match_entry->name) - 1);
+    match_entry->name[sizeof(match_entry->name) - 1] = '\0';
+    match_entry->attr = 0;
+    if (S_ISDIR(st.st_mode)) match_entry->attr |= 0x10;     /* ディレクトリ */
+    if (!(st.st_mode & S_IWUSR)) match_entry->attr |= 0x01; /* 読み取り専用 */
+    /* 時間・日付を設定する */
+    struct tm* mtm = localtime(&st.st_mtime);
+    match_entry->time =
+        ((mtm->tm_hour << 11) | (mtm->tm_min << 5) | (mtm->tm_sec / 2)) &
+        0xFFFF;
+    match_entry->date = (((mtm->tm_year - 80) << 9) | ((mtm->tm_mon + 1) << 5) |
+                         (mtm->tm_mday)) &
+                        0xFFFF;
+    match_entry->size = (ULong)st.st_size;
+    slot->count++;
+    if (slot->count >= MAX_FILES_CACHE_SLOT_MATCH_ENTRIES) {
+      break;
+    }
+  }
+  closedir(dir);
+}
+
+/*
+ 　機能：files_bufにエントリ情報をセットする
+   パラメータ：
+     const struct files_cache_slot_match_entry* entry <in> エントリ情報
+     char* files_buf                               <out> ファイル検索バッファ
+ */
+static void
+set_files_buf_entry(const struct files_cache_slot_match_entry* entry,
+                    char* files_buf) {
+  files_buf[21] = entry->attr;               /* ATR */
+  files_buf[22] = (entry->time >> 8) & 0xFF; /* TIME */
+  files_buf[23] = entry->time & 0xFF;
+  files_buf[24] = (entry->date >> 8) & 0xFF; /* DATE */
+  files_buf[25] = entry->date & 0xFF;
+  files_buf[26] =
+      (unsigned char)((entry->size & 0xff000000) >> 24); /* FILELEN */
+  files_buf[27] = (unsigned char)((entry->size & 0x00ff0000) >> 16);
+  files_buf[28] = (unsigned char)((entry->size & 0x0000ff00) >> 8);
+  files_buf[29] = (unsigned char)(entry->size & 0x000000ff);
+  strncpy(&files_buf[30], entry->name, 22); /* PACKEDNAME */
+  files_buf[30 + 22] = 0;
+}
+
+static Long dos_files_posix(const char* name_ptr, char* files_buf) {
+  /* パス名をPOSIX形式に変換 */
+  char posix_path[89];
+  name_ptr = to_slash(sizeof(posix_path), posix_path, name_ptr);
+  if (name_ptr == NULL) return DOSE_ILGFNAME;
+
+  /* キャッシュスロットを準備する */
+  struct files_cache_slot* slot = create_new_files_cache_slot();
+  if (!slot) return DOSE_NOMEM;
+
+  /* キャッシュスロットにマッチエントリを構築する */
+  build_files_cache_slot_posix(slot, posix_path);
+
+  /* 最初のエントリをセット */
+  if (slot->count == 0) {
+    free(slot->entries);
+    slot->id = 0;
+    return DOSE_NOENT;
+  }
+  {
+    struct files_cache_slot_match_entry* entry = &slot->entries[0];
+    memcpy(&files_buf[0], &slot->id,
+           sizeof(uint32_t)); /* キャッシュスロットID */
+    set_files_buf_entry(entry, files_buf);
+  }
+  return 0;
+}
+
+static Long dos_nfiles_posix(char* files_buf) {
+  /* キャッシュスロットを取得する */
+  uint32_t slot_id = *((uint32_t*)&files_buf[0]);
+  struct files_cache_slot* slot = get_files_cache_slot(slot_id);
+  if (!slot) return DOSE_NOENT;
+
+  slot->index++;
+  if (slot->index >= slot->count) {
+    /* キャッシュスロットを解放する */
+    free(slot->entries);
+    slot->id = 0;
+    return DOSE_NOENT;
+  }
+
+  /* 次のエントリをセット */
+  {
+    struct files_cache_slot_match_entry* entry = &slot->entries[slot->index];
+    set_files_buf_entry(entry, files_buf);
+  }
+  return 0;
+}
+
 /*
    機能：
      DOSCALL FILESを実行する
@@ -1210,6 +1523,8 @@ static Long Files(Long buf, Long name, short atr) {
   return 0;
 
 #else
+  return dos_files_posix(name_ptr, buf_ptr);
+
   char slbuf[89];
   name_ptr = to_slash(sizeof(slbuf), slbuf, name_ptr);
   if (name_ptr == NULL) return DOSE_ILGFNAME;
@@ -1344,6 +1659,8 @@ static Long Nfiles(Long buf) {
   return 0;
 
 #else
+  return dos_nfiles_posix(mem.bufptr);
+
   printf("DOSCALL NFILES:not defined yet %s %d\n", __FILE__, __LINE__);
   return -1;
 #endif
