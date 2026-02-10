@@ -1326,10 +1326,10 @@ static void build_files_cache_slot_posix(struct files_cache_slot* slot,
     return;
   }
   do {
-    /* 先頭が.の場合はスキップする */
-    //if (find_data.cFileName[0] == '.') {
-    //  continue;
-    //}
+    /* "."または".."はスキップする */
+    if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) {
+      continue;
+    }
 
     /* エントリ情報をセットする */
     struct files_cache_slot_match_entry* match_entry =
@@ -1366,10 +1366,10 @@ static void build_files_cache_slot_posix(struct files_cache_slot* slot,
   }
   struct dirent* entry;
   while ((entry = readdir(dir)) != NULL) {
-    /* 先頭が.の場合はスキップする */
-    //if (entry->d_name[0] == '.') {
-    //  continue;
-    //}
+    /* "."または".."はスキップする */
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+     continue;
+    }
 
     /* マッチングを確認する */
     if (!human68k_wildcard_match(file_pattern, entry->d_name)) {
@@ -1427,7 +1427,7 @@ set_files_buf_entry(const struct files_cache_slot_match_entry* entry,
   files_buf[27] = (unsigned char)((entry->size & 0x00ff0000) >> 16);
   files_buf[28] = (unsigned char)((entry->size & 0x0000ff00) >> 8);
   files_buf[29] = (unsigned char)(entry->size & 0x000000ff);
-  strncpy(&files_buf[30], entry->name, 22); /* PACKEDNAME */
+  memcpy(&files_buf[30], entry->name, 22); /* PACKEDNAME */
   files_buf[30 + 22] = 0;
 }
 
