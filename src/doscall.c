@@ -1214,7 +1214,7 @@ static void split_name(const char* full_name, const char* dot, char* base_out,
   /* 主名をコピー */
   size_t base_len = dot ? (size_t)(dot - full_name) : strnlen(full_name, 22);
   if (base_len > 18) base_len = 18;
-  strncpy(base_out, full_name, base_len);
+  memcpy(base_out, full_name, base_len);
   base_out[base_len] = '\0';
 
   /* 拡張子をコピー */
