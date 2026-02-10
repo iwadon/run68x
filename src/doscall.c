@@ -1316,6 +1316,49 @@ static void build_files_cache_slot_posix(struct files_cache_slot* slot,
   }
 
   /* マッチするエントリを取得する */
+#if defined(_WIN32)
+  WIN32_FIND_DATAA find_data;
+  char search_path[1280];
+  snprintf(search_path, sizeof(search_path), "%s\\%s", search_dir,
+           file_pattern);
+  HANDLE hFind = FindFirstFileA(search_path, &find_data);
+  if (hFind == INVALID_HANDLE_VALUE) {
+    return;
+  }
+  do {
+    /* 先頭が.の場合はスキップする */
+    //if (find_data.cFileName[0] == '.') {
+    //  continue;
+    //}
+
+    /* エントリ情報をセットする */
+    struct files_cache_slot_match_entry* match_entry =
+        &slot->entries[slot->count];
+    strncpy(match_entry->name, find_data.cFileName,
+            sizeof(match_entry->name) - 1);
+    match_entry->name[sizeof(match_entry->name) - 1] = '\0';
+    match_entry->attr = 0;
+    if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+      match_entry->attr |= 0x10; /* ディレクトリ */
+    if (find_data.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
+      match_entry->attr |= 0x01; /* 読み取り専用 */
+    /* 時間・日付を設定する */
+    FILETIME local_ft;
+    FileTimeToLocalFileTime(&find_data.ftLastWriteTime, &local_ft);
+    SYSTEMTIME st;
+    FileTimeToSystemTime(&local_ft, &st);
+    match_entry->time =
+        ((st.wHour << 11) | (st.wMinute << 5) | (st.wSecond / 2)) & 0xFFFF;
+    match_entry->date =
+        (((st.wYear - 1980) << 9) | (st.wMonth << 5) | (st.wDay)) & 0xFFFF;
+    match_entry->size = find_data.nFileSizeLow;
+    slot->count++;
+    if (slot->count >= MAX_FILES_CACHE_SLOT_MATCH_ENTRIES) {
+      break;
+    }
+  } while (FindNextFileA(hFind, &find_data) != 0);
+  FindClose(hFind);
+#else
   struct stat st;
   DIR* dir = opendir(search_dir);
   if (!dir) {
@@ -1324,9 +1367,9 @@ static void build_files_cache_slot_posix(struct files_cache_slot* slot,
   struct dirent* entry;
   while ((entry = readdir(dir)) != NULL) {
     /* 先頭が.の場合はスキップする */
-    if (entry->d_name[0] == '.') {
-      continue;
-    }
+    //if (entry->d_name[0] == '.') {
+    //  continue;
+    //}
 
     /* マッチングを確認する */
     if (!human68k_wildcard_match(file_pattern, entry->d_name)) {
@@ -1362,6 +1405,7 @@ static void build_files_cache_slot_posix(struct files_cache_slot* slot,
     }
   }
   closedir(dir);
+#endif
 }
 
 /*
@@ -1385,56 +1429,6 @@ set_files_buf_entry(const struct files_cache_slot_match_entry* entry,
   files_buf[29] = (unsigned char)(entry->size & 0x000000ff);
   strncpy(&files_buf[30], entry->name, 22); /* PACKEDNAME */
   files_buf[30 + 22] = 0;
-}
-
-static Long dos_files_posix(const char* name_ptr, char* files_buf) {
-  /* パス名をPOSIX形式に変換 */
-  char posix_path[89];
-  name_ptr = to_slash(sizeof(posix_path), posix_path, name_ptr);
-  if (name_ptr == NULL) return DOSE_ILGFNAME;
-
-  /* キャッシュスロットを準備する */
-  struct files_cache_slot* slot = create_new_files_cache_slot();
-  if (!slot) return DOSE_NOMEM;
-
-  /* キャッシュスロットにマッチエントリを構築する */
-  build_files_cache_slot_posix(slot, posix_path);
-
-  /* 最初のエントリをセット */
-  if (slot->count == 0) {
-    free(slot->entries);
-    slot->id = 0;
-    return DOSE_NOENT;
-  }
-  {
-    struct files_cache_slot_match_entry* entry = &slot->entries[0];
-    memcpy(&files_buf[0], &slot->id,
-           sizeof(uint32_t)); /* キャッシュスロットID */
-    set_files_buf_entry(entry, files_buf);
-  }
-  return 0;
-}
-
-static Long dos_nfiles_posix(char* files_buf) {
-  /* キャッシュスロットを取得する */
-  uint32_t slot_id = *((uint32_t*)&files_buf[0]);
-  struct files_cache_slot* slot = get_files_cache_slot(slot_id);
-  if (!slot) return DOSE_NOENT;
-
-  slot->index++;
-  if (slot->index >= slot->count) {
-    /* キャッシュスロットを解放する */
-    free(slot->entries);
-    slot->id = 0;
-    return DOSE_NOENT;
-  }
-
-  /* 次のエントリをセット */
-  {
-    struct files_cache_slot_match_entry* entry = &slot->entries[slot->index];
-    set_files_buf_entry(entry, files_buf);
-  }
-  return 0;
 }
 
 /*
@@ -1462,121 +1456,33 @@ static Long Files(Long buf, Long name, short atr) {
   if (!mem.bufptr) throwBusErrorOnWrite(buf + mem.length);
   char* buf_ptr = mem.bufptr;
 
-#ifdef _WIN32
-  WIN32_FIND_DATA f_data;
-  HANDLE handle;
-
-  /* 最初にマッチするファイルを探す。*/
-  /* FindFirstFileEx()はWindowsNTにしかないのでボツ
-     handle = FindFirstFileEx(name_ptr, FindExInfoStandard,
-              (LPVOID)&f_data, FindExSearchNameMatch, NULL, 0);
-  */
-
-  /* 最初のファイルを検索する。*/
-  handle = FindFirstFile(name_ptr, &f_data);
-  /* 予約領域をセット */
-  buf_ptr[0] = atr;                 /* ファイルの属性 */
-  buf_ptr[1] = 0;                   /* ドライブ番号(not used) */
-  *((HANDLE*)&buf_ptr[2]) = handle; /* サーチハンドル */
-  {
-    bool b = handle != INVALID_HANDLE_VALUE;
-    /* 属性の一致するファイルが見つかるまで繰返し検索する。*/
-    while (b) {
-      unsigned char fatr;
-      fatr = f_data.dwFileAttributes & FILE_ATTRIBUTE_READONLY ? 0x01 : 0;
-      fatr |= f_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN ? 0x02 : 0;
-      fatr |= f_data.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM ? 0x04 : 0;
-      /*			fatr |= f_data.dwFileAttributes &
-       * FILE_ATTRIBUTE_VOLUMEID ? 0x08 : 0; */
-      fatr |= f_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? 0x10 : 0;
-      fatr |= f_data.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE ? 0x20 : 0;
-      if (fatr & buf_ptr[0] || (fatr == 0 && (buf_ptr[0] & 0x20))) {
-        /* ATRをセット */
-        buf_ptr[21] = fatr;
-        break; /* 指定された属性のファイルが見つかった。*/
-      }
-      b = FindNextFile(handle, &f_data) != FALSE;
-    }
-    if (!b) return (-2);
-  }
-  /* DATEとTIMEをセット */
-  {
-    SYSTEMTIME st;
-    unsigned short s;
-    FileTimeToSystemTime(&f_data.ftLastWriteTime, &st);
-    s = (st.wHour << 11) + (st.wMinute << 5) + st.wSecond / 2;
-    buf_ptr[22] = (s & 0xff00) >> 8;
-    buf_ptr[23] = s & 0xff;
-    s = ((st.wYear - 1980) << 9) + (st.wMonth << 5) + st.wDay;
-    buf_ptr[24] = (s & 0xff00) >> 8;
-    buf_ptr[25] = s & 0xff;
-  }
-  /* FILELENをセット */
-  buf_ptr[26] = (unsigned char)((f_data.nFileSizeLow & 0xff000000) >> 24);
-  buf_ptr[27] = (unsigned char)((f_data.nFileSizeLow & 0x00ff0000) >> 16);
-  buf_ptr[28] = (unsigned char)((f_data.nFileSizeLow & 0x0000ff00) >> 8);
-  buf_ptr[29] = (unsigned char)(f_data.nFileSizeLow & 0x000000ff);
-  /* PACKEDNAMEをセット */
-  strncpy(&buf_ptr[30], f_data.cFileName, 22);
-  buf_ptr[30 + 22] = 0;
-
-  return 0;
-
-#else
-  return dos_files_posix(name_ptr, buf_ptr);
-
-  char slbuf[89];
-  name_ptr = to_slash(sizeof(slbuf), slbuf, name_ptr);
+#if !defined(_WIN32)
+  /* パス名をPOSIX形式に変換 */
+  char posix_path[89];
+  name_ptr = to_slash(sizeof(posix_path), posix_path, name_ptr);
   if (name_ptr == NULL) return DOSE_ILGFNAME;
-
-  {
-    ULong size = 0;
-    bool success = false;
-    struct stat st;
-    if (stat(name_ptr, &st) == 0) {
-      if (S_ISREG(st.st_mode)) {
-        size = st.st_size;
-        success = true;
-      } else if (S_ISDIR(st.st_mode)) {
-        success = true;
-      }
-    }
-    if (success) {
-      /* 予約領域をセット */
-      buf_ptr[0] = atr; /* ファイルの属性 */
-      buf_ptr[1] = 0;   /* ドライブ番号(not used) */
-      //			*((HANDLE*)&buf_ptr[2]) = handle; /*
-      // サーチハンドル */
-      // DATEとTIMEをセット: 未実装
-
-      // FILELENをセット
-      buf_ptr[26] = (unsigned char)((size & 0xff000000) >> 24);
-      buf_ptr[27] = (unsigned char)((size & 0x00ff0000) >> 16);
-      buf_ptr[28] = (unsigned char)((size & 0x0000ff00) >> 8);
-      buf_ptr[29] = (unsigned char)(size & 0x000000ff);
-      /* PACKEDNAMEをセット */
-      strncpy(&buf_ptr[30], name_ptr, 22);
-      buf_ptr[30 + 22] = 0;
-
-      return 0;
-    }
-  }
-
-  char* path = name_ptr;
-  DIR* dir;
-  struct dirent* dent;
-
-  dir = opendir(path);
-  printf("opendir(%s)=%p\n", path, dir);
-  if (dir) {
-    while ((dent = readdir(dir)) != NULL) {
-      printf("%s\n", dent->d_name);
-    }
-    closedir(dir);
-  }
-  printf("DOSCALL FILES:not defined yet %s %d\n", __FILE__, __LINE__);
-  return -1;
 #endif
+
+  /* キャッシュスロットを準備する */
+  struct files_cache_slot* slot = create_new_files_cache_slot();
+  if (!slot) return DOSE_NOMEM;
+
+  /* キャッシュスロットにマッチエントリを構築する */
+  build_files_cache_slot_posix(slot, name_ptr);
+
+  /* 最初のエントリをセット */
+  if (slot->count == 0) {
+    free(slot->entries);
+    slot->id = 0;
+    return DOSE_NOENT;
+  }
+  {
+    struct files_cache_slot_match_entry* entry = &slot->entries[0];
+    memcpy(&buf_ptr[0], &slot->id,
+           sizeof(uint32_t)); /* キャッシュスロットID */
+    set_files_buf_entry(entry, buf_ptr);
+  }
+  return 0;
 }
 
 /*
@@ -1586,84 +1492,27 @@ static Long Files(Long buf, Long name, short atr) {
 static Long Nfiles(Long buf) {
   Span mem = GetWritableMemorySuper(buf, SIZEOF_FILES);
   if (!mem.bufptr) throwBusErrorOnWrite(buf + mem.length);
-
-#ifdef _WIN32
-  WIN32_FIND_DATA f_data = {0};
   char* buf_ptr = mem.bufptr;
-  short atr = buf_ptr[0]; /* 検索すべきファイルの属性 */
 
-  {
-    /* todo:buf_ptrの指す領域から必要な情報を取り出して、f_dataにコピーする。*/
-    /* 2秒→100nsに変換する。*/
-    unsigned short s1 = *((unsigned short*)&buf_ptr[24]);
-    unsigned short s2 = *((unsigned short*)&buf_ptr[22]);
-    SYSTEMTIME st = {
-        .wYear = ((s1 & 0xfe00) >> 9) + 1980,
-        .wMonth = (s1 & 0x01e0) >> 5,
-        .wDay = (s1 & 0x1f),
-        .wHour = (s2 & 0xf800) >> 11,
-        .wMinute = (s2 & 0x07e0) >> 5,
-        .wSecond = (s2 & 0x001f),
-        .wMilliseconds = 0,
-    };
-    SystemTimeToFileTime(&st, &f_data.ftLastWriteTime);
+  /* キャッシュスロットを取得する */
+  uint32_t slot_id = *((uint32_t*)&buf_ptr[0]);
+  struct files_cache_slot* slot = get_files_cache_slot(slot_id);
+  if (!slot) return DOSE_NOENT;
 
-    f_data.nFileSizeHigh = 0;
-    f_data.nFileSizeLow = *((ULong*)&buf_ptr[29]);
-    /* ファイルのハンドルをバッファから取得する。*/
-    HANDLE handle = *((HANDLE*)&buf_ptr[2]);
-    bool b = FindNextFile(handle, &f_data) != FALSE;
-    /* 属性の一致するファイルが見つかるまで繰返し検索する。*/
-    while (b) {
-      unsigned char fatr;
-      fatr = f_data.dwFileAttributes & FILE_ATTRIBUTE_READONLY ? 0x01 : 0;
-      fatr |= f_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN ? 0x02 : 0;
-      fatr |= f_data.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM ? 0x04 : 0;
-      /*			fatr |= f_data.dwFileAttributes &
-       * FILE_ATTRIBUTE_VOLUMEID ? 0x08 : 0; */
-      fatr |= f_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? 0x10 : 0;
-      fatr |= f_data.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE ? 0x20 : 0;
-      if (fatr & buf_ptr[0] || (fatr == 0 && (buf_ptr[0] & 0x20))) {
-        /* ATRをセット */
-        buf_ptr[21] = fatr;
-        break; /* 指定された属性のファイルが見つかった。*/
-      }
-      b = FindNextFile(handle, &f_data) != FALSE;
-    }
-    if (!b) {
-      return -2;
-    }
+  slot->index++;
+  if (slot->index >= slot->count) {
+    /* キャッシュスロットを解放する */
+    free(slot->entries);
+    slot->id = 0;
+    return DOSE_NOENT;
   }
 
-  /* DATEとTIMEをセット */
+  /* 次のエントリをセット */
   {
-    SYSTEMTIME st;
-    unsigned short s;
-    FileTimeToSystemTime(&f_data.ftLastWriteTime, &st);
-    s = (st.wHour << 11) + (st.wMinute << 5) + st.wSecond / 2;
-    buf_ptr[22] = (s & 0xff00) >> 8;
-    buf_ptr[23] = s & 0xff;
-    s = ((st.wYear - 1980) << 9) + (st.wMonth << 5) + st.wDay;
-    buf_ptr[24] = (s & 0xff00) >> 8;
-    buf_ptr[25] = s & 0xff;
+    struct files_cache_slot_match_entry* entry = &slot->entries[slot->index];
+    set_files_buf_entry(entry, buf_ptr);
   }
-  /* FILELENをセット */
-  buf_ptr[26] = (unsigned char)((f_data.nFileSizeLow & 0xff000000) >> 24);
-  buf_ptr[27] = (unsigned char)((f_data.nFileSizeLow & 0x00ff0000) >> 16);
-  buf_ptr[28] = (unsigned char)((f_data.nFileSizeLow & 0x0000ff00) >> 8);
-  buf_ptr[29] = (unsigned char)(f_data.nFileSizeLow & 0x000000ff);
-  /* PACKEDNAMEをセット */
-  strncpy(&buf_ptr[30], f_data.cFileName, 22);
-  buf_ptr[30 + 22] = 0;
-
   return 0;
-
-#else
-  return dos_nfiles_posix(mem.bufptr);
-
-  printf("DOSCALL NFILES:not defined yet %s %d\n", __FILE__, __LINE__);
-  return -1;
-#endif
 }
 
 /*
