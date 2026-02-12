@@ -1,5 +1,11 @@
 # 変更履歴
 
+## 2.3.1 (2026-02-11)
+
+* `ADD.L Dn,<ea>`命令で`CCR`レジスタの変化が正しくない不具合を修正。
+  (PR https://github.com/kg68k/run68x/pull/19 by @erique)
+
+
 ## 2.3.0 (2025-11-03)
 
 * (generic) `DOS _MKDIR`、`DOS _RMDIR`、`DOS _CHDIR`、`DOS _FILEDATE`を実装。
