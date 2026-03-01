@@ -1811,6 +1811,16 @@ static Long Getfcb(short fhdl) {
         FILEINFO* fi = GetFinfo(fhdl);
         if (fi->is_opened) {
           // ファイルサイズ
+#ifdef _WIN32
+          LARGE_INTEGER size;
+          if (GetFileSizeEx(fi->host.handle, &size)) {
+            fcb[3][64] = (unsigned char)((size.QuadPart & 0xff000000) >> 24);
+            fcb[3][65] = (unsigned char)((size.QuadPart & 0x00ff0000) >> 16);
+            fcb[3][66] = (unsigned char)((size.QuadPart & 0x0000ff00) >> 8);
+            fcb[3][67] = (unsigned char)(size.QuadPart & 0x000000ff);
+          }
+#else
+
           int i = ftell(fi->host.fp);
           int err = fseek(fi->host.fp, 0, SEEK_END);
           if (err == 0) {
@@ -1821,6 +1831,7 @@ static Long Getfcb(short fhdl) {
             fcb[3][67] = (unsigned char)(size & 0x000000ff);
           }
           fseek(fi->host.fp, i, SEEK_SET);
+#endif
 
           // 日時
           Long dt = HOST_GET_FILEDATE(fi);
