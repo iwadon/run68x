@@ -202,6 +202,12 @@ bool CloseFile_win32(FILEINFO* finfop) {
   if (hFile == NULL) return false;
 
   finfop->host.handle = NULL;
+  // 生の標準ストリームは閉じない(_DUP2でリダイレクトされた標準ハンドルを
+  // クローズしても、プロセスの標準入出力ハンドル自体は破壊しない)。
+  if (hFile == GetStdHandle(STD_INPUT_HANDLE) ||
+      hFile == GetStdHandle(STD_OUTPUT_HANDLE) ||
+      hFile == GetStdHandle(STD_ERROR_HANDLE))
+    return true;
   return (CloseHandle(hFile) == FALSE) ? false : true;
 }
 

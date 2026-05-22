@@ -909,10 +909,10 @@ static Long Ioctrl(short mode, Long stack_adr) {
      Long  複写先のハンドルまたはエラーコード
  */
 static Long Dup(short org) {
-  if (org < 5) return (-14);
+  if (!IsOpened(org)) return DOSE_BADF;  // 複製元が未オープン
 
   Long ret = FindFreeFileNo();
-  if (ret < 0) return -4;  // オープンしているファイルが多すぎる
+  if (ret < 0) return DOSE_MFILE;  // 空きハンドルがない
 
   ShareHandle(ret, org);  // 実体を共有する(コピーしない)
   return ret;
@@ -920,19 +920,19 @@ static Long Dup(short org) {
 
 /*
  　機能：DOSCALL DUP2を実行する
- 戻り値：エラーコード
+ 戻り値：複製先のハンドル番号またはエラーコード
  */
 static Long Dup2(short org, short new) {
-  if (new < 5 || org < 5) return (-14);
+  if (new < 0 || new >= FILE_MAX) return DOSE_MFILE;  // 複製先が無効
+  if (!IsOpened(org)) return DOSE_BADF;               // 複製元が未オープン
 
-  if (new >= FILE_MAX) return (-14); /* 無効なパラメータ */
-
+  // 複製先が既にオープンされていれば先にクローズする。
   if (IsOpened(new)) {
-    if (Close(new) < 0) return -14;
+    if (Close(new) < 0) return DOSE_ILGPARM;
   }
 
   ShareHandle(new, org);  // 実体を共有する(コピーしない)
-  return 0;
+  return new;
 }
 
 /*
@@ -987,9 +987,12 @@ static char* to_slash(size_t size, char* buf, const char* path) {
  戻り値：エラーコード
  */
 static Long Close(short hdl) {
-  if (hdl <= HUMAN68K_SYSTEM_FILENO_MAX) return DOSE_SUCCESS;
-  if (!IsOpened(hdl)) return DOSE_BADF;          // オープンされていない
-  if (!CloseFile(hdl)) return DOSE_ILGPARM;      // 無効なパラメータでコールした
+  if (!IsOpened(hdl)) {
+    // 未オープンのAUX(3)/PRN(4)等、標準ハンドル範囲は従来通り成功扱い。
+    if (hdl >= 0 && hdl <= HUMAN68K_SYSTEM_FILENO_MAX) return DOSE_SUCCESS;
+    return DOSE_BADF;  // オープンされていない
+  }
+  if (!CloseFile(hdl)) return DOSE_ILGPARM;  // 無効なパラメータでコールした
 
   return 0;
 }
