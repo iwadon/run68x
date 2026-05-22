@@ -26,12 +26,16 @@
 #include "mem.h"
 #include "run68.h"
 
+// ハンドル番号からファイル情報の実体を取得するアクセサ。
+// 全ての finfo[] アクセスはこの関数を経由させる(2層化の土台)。
+FILEINFO* GetFinfo(Long fileno) { return &finfo[fileno]; }
+
 // 開いている(オープン中でない)ファイル番号を探す
 Long FindFreeFileNo(void) {
   int i;
 
   for (i = HUMAN68K_USER_FILENO_MIN; i < FILE_MAX; i++) {
-    if (!finfo[i].is_opened) {
+    if (!GetFinfo(i)->is_opened) {
       return (Long)i;
     }
   }
@@ -45,7 +49,7 @@ static FILEINFO* getFileInfo(UWord fileno, Long* outErr) {
     return NULL;
   }
 
-  FILEINFO* finfop = &finfo[fileno];
+  FILEINFO* finfop = GetFinfo(fileno);
   if (!finfop->is_opened) {
     *outErr = DOSE_BADF;
     return NULL;
@@ -373,7 +377,7 @@ static OnmemoryFileData defaultOnmemoryFileData(void) {
 
 // finfoを初期化する。
 void ClearFinfo(int fileno) {
-  FILEINFO* f = &finfo[fileno];
+  FILEINFO* f = GetFinfo(fileno);
 
   f->host = (HostFileInfoMember){0};
   f->is_opened = false;
@@ -385,7 +389,7 @@ void ClearFinfo(int fileno) {
 // オープンしたファイルの情報をfinfoに書き込む。
 FILEINFO* SetFinfo(int fileno, HostFileInfoMember hostfile, FileOpenMode mode,
                    unsigned int nest) {
-  FILEINFO* f = &finfo[fileno];
+  FILEINFO* f = GetFinfo(fileno);
 
   f->host = hostfile;
   f->is_opened = true;

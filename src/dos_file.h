@@ -20,6 +20,11 @@
 
 #include "run68.h"
 
+// ハンドル番号からファイル情報の実体を取得するアクセサ。
+// 現状は finfo[] への単純アクセスだが、将来の2層化(ハンドルテーブルと
+// 実体テーブルの分離)に備えて全アクセスをここに集約する。
+FILEINFO* GetFinfo(Long fileno);
+
 Long FindFreeFileNo(void);
 Long CreateNewfile(ULong file, UWord atr, bool newfile);
 Long OpenExistingFile(ULong file, UWord mode);
