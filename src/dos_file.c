@@ -442,7 +442,7 @@ FILEINFO* SetFinfo(Long fileno, HostFileInfoMember hostfile, FileOpenMode mode,
   FILEINFO* f = &ftable[fcbIdx];
   f->host = hostfile;
   f->mode = mode;
-  f->nest = nest_cnt;
+  f->nest = nest;
   f->onmemory = defaultOnmemoryFileData();
   f->refcount = 0;  // BindHandleで1になる
 
