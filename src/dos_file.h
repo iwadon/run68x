@@ -20,10 +20,12 @@
 
 #include "run68.h"
 
-// ハンドル番号からファイル情報の実体を取得するアクセサ。
-// 現状は finfo[] への単純アクセスだが、将来の2層化(ハンドルテーブルと
-// 実体テーブルの分離)に備えて全アクセスをここに集約する。
-FILEINFO* GetFinfo(Long fileno);
+// ファイルハンドル管理(2層構造: ハンドルテーブル htable と実体テーブル ftable)。
+void InitFileHandleTable(void);            // 全ハンドルを未使用に初期化
+bool IsOpened(Long fileno);                // ハンドルがオープン中か
+FILEINFO* GetFinfo(Long fileno);           // ハンドル→実体(未使用ならNULL)
+void ShareHandle(Long to, Long from);      // fromの実体をtoにも参照させる(DUP用)
+FILEINFO* UnbindHandle(Long fileno);       // 紐付け解除。実体解放時のみ実体を返す
 
 Long FindFreeFileNo(void);
 Long CreateNewfile(ULong file, UWord atr, bool newfile);
@@ -42,7 +44,6 @@ Long DosFiledate(ULong param);
 Long DosMaketmp(ULong param);
 Long DosNewfile(ULong param);
 
-void ClearFinfo(int fileno);
 FILEINFO* SetFinfo(Long fileno, HostFileInfoMember hostfile, FileOpenMode mode,
                    unsigned int nest);
 void FreeOnmemoryFile(FILEINFO* finfop);

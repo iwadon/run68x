@@ -182,7 +182,7 @@ static Long DosFgetc(ULong param) {
   if (fileno >= FILE_MAX) return DOSE_MFILE;
 
   FILEINFO* finfop = GetFinfo(fileno);
-  if (!finfop->is_opened) return DOSE_BADF;
+  if (finfop == NULL) return DOSE_BADF;
 
   if (finfop->onmemory.buffer) return (Long)fgetcFromOnmemory(finfop);
 
@@ -217,9 +217,13 @@ static Long DosFgetc(ULong param) {
 #endif
 }
 
-// ファイルを閉じてFILEINFOを未使用状態に戻す
-static bool CloseFile(FILEINFO* finfop) {
-  finfop->is_opened = false;
+// ハンドルを閉じる。実体が他のハンドルから共有されている場合は
+//   参照カウントを減らすだけで、ホストのファイルは閉じない。
+//   最後の参照が外れたときだけ実体をクローズする。
+static bool CloseFile(Long hdl) {
+  FILEINFO* finfop = UnbindHandle(hdl);
+  if (finfop == NULL) return true;  // まだ共有されている(または未オープン)
+
   FreeOnmemoryFile(finfop);
   return HOST_CLOSE_FILE(finfop);
 }
@@ -230,8 +234,8 @@ void close_all_files(void) {
 
   for (i = HUMAN68K_USER_FILENO_MIN; i < FILE_MAX; i++) {
     FILEINFO* finfop = GetFinfo(i);
-    if (finfop->is_opened && finfop->nest == nest_cnt) {
-      CloseFile(finfop);
+    if (finfop != NULL && finfop->nest == nest_cnt) {
+      CloseFile(i);
     }
   }
 }
@@ -395,9 +399,9 @@ bool dos_call(UByte code) {
     case 0x0D: /* FFLUSH */
 #ifdef _WIN32
       /* オープン中の全てのファイルをフラッシュする。*/
-      for (int i = 5; i < FILE_MAX; i++) {
+      for (int i = HUMAN68K_USER_FILENO_MIN; i < FILE_MAX; i++) {
         FILEINFO* finfop = GetFinfo(i);
-        if (finfop->is_opened) FlushFileBuffers(finfop->host.handle);
+        if (finfop != NULL) FlushFileBuffers(finfop->host.handle);
       }
 #else
       _flushall();
@@ -877,7 +881,7 @@ static Long Ioctrl(short mode, Long stack_adr) {
       if (fno < 5) return (0);
       {
         FILEINFO* finfop = GetFinfo(fno);
-        if (!finfop->is_opened) return 0;
+        if (finfop == NULL) return 0;
         if (finfop->mode == 0 || finfop->mode == 2) return (0xFF);
       }
       return (0);
@@ -887,7 +891,7 @@ static Long Ioctrl(short mode, Long stack_adr) {
       if (fno < 5) return (0);
       {
         FILEINFO* finfop = GetFinfo(fno);
-        if (!finfop->is_opened) return 0;
+        if (finfop == NULL) return 0;
         if (finfop->mode == 1 || finfop->mode == 2) return (0xFF);
       }
       return (0);
@@ -910,7 +914,7 @@ static Long Dup(short org) {
   Long ret = FindFreeFileNo();
   if (ret < 0) return -4;  // オープンしているファイルが多すぎる
 
-  *GetFinfo(ret) = *GetFinfo(org);
+  ShareHandle(ret, org);  // 実体を共有する(コピーしない)
   return ret;
 }
 
@@ -923,11 +927,11 @@ static Long Dup2(short org, short new) {
 
   if (new >= FILE_MAX) return (-14); /* 無効なパラメータ */
 
-  if (GetFinfo(new)->is_opened) {
+  if (IsOpened(new)) {
     if (Close(new) < 0) return -14;
   }
 
-  *GetFinfo(new) = *GetFinfo(org);
+  ShareHandle(new, org);  // 実体を共有する(コピーしない)
   return 0;
 }
 
@@ -984,9 +988,8 @@ static char* to_slash(size_t size, char* buf, const char* path) {
  */
 static Long Close(short hdl) {
   if (hdl <= HUMAN68K_SYSTEM_FILENO_MAX) return DOSE_SUCCESS;
-  FILEINFO* finfop = GetFinfo(hdl);
-  if (!finfop->is_opened) return DOSE_BADF;  // オープンされていない
-  if (!CloseFile(finfop)) return DOSE_ILGPARM;  // 無効なパラメータでコールした
+  if (!IsOpened(hdl)) return DOSE_BADF;          // オープンされていない
+  if (!CloseFile(hdl)) return DOSE_ILGPARM;      // 無効なパラメータでコールした
 
   return 0;
 }
@@ -1026,7 +1029,7 @@ static Long Fgets(Long adr, short hdl) {
 
   FILEINFO* finfop = GetFinfo(hdl);
 
-  if (!finfop->is_opened) return -6;  // オープンされていない
+  if (finfop == NULL) return -6;  // オープンされていない
   if (finfop->mode == 1) return (-1);
 
   if (finfop->onmemory.buffer) return fgetsFromOnmemory(finfop, adr);
@@ -1082,7 +1085,7 @@ static Long Write(short hdl, Long buf, Long len) {
   Long write_len = 0;
 
   FILEINFO* finfop = GetFinfo(hdl);
-  if (!finfop->is_opened) return -6;  // オープンされていない
+  if (finfop == NULL) return -6;  // オープンされていない
   if (len == 0) return 0;
 
   Span mem = GetReadableMemorySuper(buf, len);
