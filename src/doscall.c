@@ -83,7 +83,7 @@ static void Exec4(Long);
 #ifndef _WIN32
 static Long Write_conv(short hdl, void* buf, size_t size) {
   Long write_len;
-  FILE* fp = finfo[hdl].host.fp;
+  FILE* fp = GetFinfo(hdl)->host.fp;
 
   if (fp == NULL) return -6;
 
@@ -182,8 +182,8 @@ static Long DosFgetc(ULong param) {
   UWord fileno = ReadParamUWord(&param);
   if (fileno >= FILE_MAX) return DOSE_MFILE;
 
-  FILEINFO* finfop = &finfo[fileno];
-  if (!finfop->is_opened) return DOSE_BADF;
+  FILEINFO* finfop = GetFinfo(fileno);
+  if (finfop == NULL) return DOSE_BADF;
 
   if (finfop->onmemory.buffer) return (Long)fgetcFromOnmemory(finfop);
 
@@ -218,9 +218,13 @@ static Long DosFgetc(ULong param) {
 #endif
 }
 
-// ファイルを閉じてFILEINFOを未使用状態に戻す
-static bool CloseFile(FILEINFO* finfop) {
-  finfop->is_opened = false;
+// ハンドルを閉じる。実体が他のハンドルから共有されている場合は
+//   参照カウントを減らすだけで、ホストのファイルは閉じない。
+//   最後の参照が外れたときだけ実体をクローズする。
+static bool CloseFile(Long hdl) {
+  FILEINFO* finfop = UnbindHandle(hdl);
+  if (finfop == NULL) return true;  // まだ共有されている(または未オープン)
+
   FreeOnmemoryFile(finfop);
   return HOST_CLOSE_FILE(finfop);
 }
@@ -230,9 +234,9 @@ void close_all_files(void) {
   int i;
 
   for (i = HUMAN68K_USER_FILENO_MIN; i < FILE_MAX; i++) {
-    FILEINFO* finfop = &finfo[i];
-    if (finfop->is_opened && finfop->nest == nest_cnt) {
-      CloseFile(finfop);
+    FILEINFO* finfop = GetFinfo(i);
+    if (finfop != NULL && finfop->nest == nest_cnt) {
+      CloseFile(i);
     }
   }
 }
@@ -283,7 +287,7 @@ bool dos_call(UByte code) {
   switch (code) {
     case 0x01: /* GETCHAR */
 #ifdef _WIN32
-      FlushFileBuffers(finfo[1].host.handle);
+      FlushFileBuffers(GetFinfo(1)->host.handle);
 #endif
       rd[0] = (_getche() & 0xFF);
       break;
@@ -293,7 +297,7 @@ bool dos_call(UByte code) {
       // 出力する1文字の直後に必ずNUL文字を置くこと。
       char c[2] = {(char)ReadUWordSuper(stack_adr), '\0'};
 #ifdef _WIN32
-      FILEINFO* finfop = &finfo[1];
+      FILEINFO* finfop = GetFinfo(1);
       if (GetConsoleMode(finfop->host.handle, &st) != 0) {
         // 非リダイレクト
         WriteW32(1, finfop->host.handle, c, 1);
@@ -313,7 +317,7 @@ bool dos_call(UByte code) {
       srt &= 0xFF;
       if (srt >= 0xFE) {
 #ifdef _WIN32
-        FILEINFO* finfop = &finfo[0];
+        FILEINFO* finfop = GetFinfo(0);
         INPUT_RECORD ir[3];
         DWORD read_len = 0;
         rd[0] = 0;
@@ -350,7 +354,7 @@ bool dos_call(UByte code) {
     case 0x07: /* INKEY */
     case 0x08: /* GETC */
 #ifdef _WIN32
-      FlushFileBuffers(finfo[1].host.handle);
+      FlushFileBuffers(GetFinfo(1)->host.handle);
 #endif
       c = _getch();
       if (c == 0x00) {
@@ -364,7 +368,7 @@ bool dos_call(UByte code) {
       len = strlen(data_ptr);
 #ifdef _WIN32
       {
-        FILEINFO* finfop = &finfo[1];
+        FILEINFO* finfop = GetFinfo(1);
         if (GetConsoleMode(finfop->host.handle, &st) != 0) {
           WriteW32(1, finfop->host.handle, data_ptr, len);
         } else {
@@ -396,8 +400,9 @@ bool dos_call(UByte code) {
     case 0x0D: /* FFLUSH */
 #ifdef _WIN32
       /* オープン中の全てのファイルをフラッシュする。*/
-      for (int i = 5; i < FILE_MAX; i++) {
-        if (finfo[i].is_opened) FlushFileBuffers(finfo[i].host.handle);
+      for (int i = HUMAN68K_USER_FILENO_MIN; i < FILE_MAX; i++) {
+        FILEINFO* finfop = GetFinfo(i);
+        if (finfop != NULL) FlushFileBuffers(finfop->host.handle);
       }
 #else
       _flushall();
@@ -485,7 +490,7 @@ bool dos_call(UByte code) {
       char c[2] = {(char)ReadUWordSuper(stack_adr), '\0'};
       fhdl = (short)mem_get(stack_adr + 2, S_WORD);
 #ifdef _WIN32
-      FILEINFO* finfop = &finfo[fhdl];
+      FILEINFO* finfop = GetFinfo(fhdl);
       if (GetConsoleMode(finfop->host.handle, &st) != 0 &&
           (fhdl == 1 || fhdl == 2)) {
         // 非リダイレクトで標準出力か標準エラー出力
@@ -507,12 +512,12 @@ bool dos_call(UByte code) {
       data_ptr = GetStringSuper(data);
 #ifdef _WIN32
       if ((fhdl == 1 || fhdl == 2) &&
-          GetConsoleMode(finfo[1].host.handle, &st) != FALSE) {
+          GetConsoleMode(GetFinfo(1)->host.handle, &st) != FALSE) {
         // 非リダイレクトで標準出力か標準エラー出力
-        len =
-            WriteW32(fhdl, finfo[fhdl].host.handle, data_ptr, strlen(data_ptr));
+        len = WriteW32(fhdl, GetFinfo(fhdl)->host.handle, data_ptr,
+                       strlen(data_ptr));
       } else {
-        WriteFile(finfo[fhdl].host.handle, data_ptr, strlen(data_ptr),
+        WriteFile(GetFinfo(fhdl)->host.handle, data_ptr, strlen(data_ptr),
                   (LPDWORD)&len, NULL);
       }
       rd[0] = len;
@@ -875,15 +880,21 @@ static Long Ioctrl(short mode, Long stack_adr) {
       fno = (short)mem_get(stack_adr, S_WORD);
       if (fno == 0) return (0xFF); /* 入力可 */
       if (fno < 5) return (0);
-      if (!finfo[fno].is_opened) return 0;
-      if (finfo[fno].mode == 0 || finfo[fno].mode == 2) return (0xFF);
+      {
+        FILEINFO* finfop = GetFinfo(fno);
+        if (finfop == NULL) return 0;
+        if (finfop->mode == 0 || finfop->mode == 2) return (0xFF);
+      }
       return (0);
     case 7:
       fno = (short)mem_get(stack_adr, S_WORD);
       if (fno == 1 || fno == 2) return (0xFF); /* 出力可 */
       if (fno < 5) return (0);
-      if (!finfo[fno].is_opened) return 0;
-      if (finfo[fno].mode == 1 || finfo[fno].mode == 2) return (0xFF);
+      {
+        FILEINFO* finfop = GetFinfo(fno);
+        if (finfop == NULL) return 0;
+        if (finfop->mode == 1 || finfop->mode == 2) return (0xFF);
+      }
       return (0);
     default:
       return (0);
@@ -899,30 +910,30 @@ static Long Ioctrl(short mode, Long stack_adr) {
      Long  複写先のハンドルまたはエラーコード
  */
 static Long Dup(short org) {
-  if (org < 5) return (-14);
+  if (!IsOpened(org)) return DOSE_BADF;  // 複製元が未オープン
 
   Long ret = FindFreeFileNo();
-  if (ret < 0) return -4;  // オープンしているファイルが多すぎる
+  if (ret < 0) return DOSE_MFILE;  // 空きハンドルがない
 
-  finfo[ret] = finfo[org];
+  ShareHandle(ret, org);  // 実体を共有する(コピーしない)
   return ret;
 }
 
 /*
  　機能：DOSCALL DUP2を実行する
- 戻り値：エラーコード
+ 戻り値：複製先のハンドル番号またはエラーコード
  */
 static Long Dup2(short org, short new) {
-  if (new < 5 || org < 5) return (-14);
+  if (new < 0 || new >= FILE_MAX) return DOSE_MFILE;  // 複製先が無効
+  if (!IsOpened(org)) return DOSE_BADF;               // 複製元が未オープン
 
-  if (new >= FILE_MAX) return (-14); /* 無効なパラメータ */
-
-  if (finfo[new].is_opened) {
-    if (Close(new) < 0) return -14;
+  // 複製先が既にオープンされていれば先にクローズする。
+  if (IsOpened(new)) {
+    if (Close(new) < 0) return DOSE_ILGPARM;
   }
 
-  finfo[new] = finfo[org];
-  return 0;
+  ShareHandle(new, org);  // 実体を共有する(コピーしない)
+  return new;
 }
 
 /*
@@ -977,10 +988,12 @@ static char* to_slash(size_t size, char* buf, const char* path) {
  戻り値：エラーコード
  */
 static Long Close(short hdl) {
-  if (hdl <= HUMAN68K_SYSTEM_FILENO_MAX) return DOSE_SUCCESS;
-  if (!finfo[hdl].is_opened) return DOSE_BADF;  // オープンされていない
-  if (!CloseFile(&finfo[hdl]))
-    return DOSE_ILGPARM;  // 無効なパラメータでコールした
+  if (!IsOpened(hdl)) {
+    // 未オープンのAUX(3)/PRN(4)等、標準ハンドル範囲は従来通り成功扱い。
+    if (hdl >= 0 && hdl <= HUMAN68K_SYSTEM_FILENO_MAX) return DOSE_SUCCESS;
+    return DOSE_BADF;  // オープンされていない
+  }
+  if (!CloseFile(hdl)) return DOSE_ILGPARM;  // 無効なパラメータでコールした
 
   return 0;
 }
@@ -1018,9 +1031,9 @@ static Long Fgets(Long adr, short hdl) {
   char buf[257] = {0};
   size_t len;
 
-  FILEINFO* finfop = &finfo[hdl];
+  FILEINFO* finfop = GetFinfo(hdl);
 
-  if (!finfop->is_opened) return -6;  // オープンされていない
+  if (finfop == NULL) return -6;  // オープンされていない
   if (finfop->mode == 1) return (-1);
 
   if (finfop->onmemory.buffer) return fgetsFromOnmemory(finfop, adr);
@@ -1075,7 +1088,8 @@ static Long Fgets(Long adr, short hdl) {
 static Long Write(short hdl, Long buf, Long len) {
   Long write_len = 0;
 
-  if (!finfo[hdl].is_opened) return -6;  // オープンされていない
+  FILEINFO* finfop = GetFinfo(hdl);
+  if (finfop == NULL) return -6;  // オープンされていない
   if (len == 0) return 0;
 
   Span mem = GetReadableMemorySuper(buf, len);
@@ -1086,10 +1100,10 @@ static Long Write(short hdl, Long buf, Long len) {
 
 #ifdef _WIN32
   unsigned len2 = 0;
-  WriteFile(finfo[hdl].host.handle, mem.bufptr, mem.length, &len2, NULL);
+  WriteFile(finfop->host.handle, mem.bufptr, mem.length, &len2, NULL);
   write_len = len2;
-  if (finfo[hdl].host.handle == GetStdHandle(STD_OUTPUT_HANDLE))
-    FlushFileBuffers(finfo[hdl].host.handle);
+  if (finfop->host.handle == GetStdHandle(STD_OUTPUT_HANDLE))
+    FlushFileBuffers(finfop->host.handle);
 #else
   write_len = Write_conv(hdl, mem.bufptr, mem.length);
 #endif
@@ -1705,7 +1719,7 @@ static Long Conctrl(short mode, Long adr) {
       if (code >= 0x0100) putchar(code >> 8);
       putchar(code & 0xff);
 #ifdef _WIN32
-      FlushFileBuffers(finfo[1].host.handle);
+      FlushFileBuffers(GetFinfo(1)->host.handle);
 #else
       fflush(stdout);
 #endif
@@ -1975,7 +1989,7 @@ static Long Getfcb(short fhdl) {
       fcb[3][14] = (unsigned char)fhdl;
       if (fhdl >= 5) {
         FILEINFO* fi = GetFinfo(fhdl);
-        if (fi->is_opened) {
+        if (fi != NULL) {
           // ファイルサイズ
 #ifdef _WIN32
           LARGE_INTEGER size;

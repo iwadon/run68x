@@ -393,6 +393,9 @@ bool CloseFile_generic(FILEINFO* finfop) {
   if (fp == NULL) return false;
 
   finfop->host.fp = NULL;
+  // 生の標準ストリームは閉じない(_DUP2でリダイレクトされた標準ハンドルを
+  // クローズしても、プロセスのstdin/stdout/stderr自体は破壊しない)。
+  if (fp == stdin || fp == stdout || fp == stderr) return true;
   return fclose(fp) == EOF ? false : true;
 }
 #endif

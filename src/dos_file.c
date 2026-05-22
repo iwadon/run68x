@@ -26,12 +26,72 @@
 #include "mem.h"
 #include "run68.h"
 
+// ファイルハンドル管理は2層構造になっている(実機Human68kと同じ方式)。
+//   htable[ハンドル番号] = 実体(ftable)のインデックス。未使用は -1。
+//   ftable[インデックス] = ファイルの実体(FILEINFO)。refcountで生存を管理。
+// _DUP/_DUP2 はhtableのインデックスを差し替え、実体は共有する。
+static FILEINFO ftable[FILE_MAX];
+static int htable[FILE_MAX];
+
+// ハンドル管理テーブルを初期状態(全て未使用)にする。
+void InitFileHandleTable(void) {
+  for (int i = 0; i < FILE_MAX; i++) {
+    htable[i] = -1;
+    ftable[i].refcount = 0;
+  }
+}
+
+// ハンドル番号が実体に紐づいている(オープン中)か。
+bool IsOpened(Long fileno) {
+  if (fileno < 0 || fileno >= FILE_MAX) return false;
+  return htable[fileno] >= 0;
+}
+
+// ハンドル番号からファイル情報の実体を取得するアクセサ。
+//   オープンされていないハンドルでは NULL を返す。
+FILEINFO* GetFinfo(Long fileno) {
+  if (!IsOpened(fileno)) return NULL;
+  return &ftable[htable[fileno]];
+}
+
+// 未使用の実体スロットを確保し、そのインデックスを返す。空きがなければ -1。
+static int AllocFcb(void) {
+  for (int i = 0; i < FILE_MAX; i++) {
+    if (ftable[i].refcount == 0) return i;
+  }
+  return -1;
+}
+
+// ハンドル番号に実体を割り当てる。fcbIdxの実体の参照カウントを増やす。
+static void BindHandle(Long fileno, int fcbIdx) {
+  htable[fileno] = fcbIdx;
+  ftable[fcbIdx].refcount++;
+}
+
+// ハンドル番号と実体の紐付けを解除する。実体の参照カウントを減らし、
+//   0になったら呼び出し側が実体のクローズ処理を行えるよう、解放対象の
+//   実体を返す(まだ他から参照されていれば NULL)。
+FILEINFO* UnbindHandle(Long fileno) {
+  if (!IsOpened(fileno)) return NULL;
+
+  int fcbIdx = htable[fileno];
+  htable[fileno] = -1;
+  if (--ftable[fcbIdx].refcount > 0) return NULL;  // まだ共有されている
+  return &ftable[fcbIdx];
+}
+
+// ハンドル番号fromの実体をハンドル番号toにも参照させる(_DUP/_DUP2用)。
+//   toは未使用であること(呼び出し側で先にクローズ済みにする)。
+void ShareHandle(Long to, Long from) {
+  BindHandle(to, htable[from]);
+}
+
 // 開いている(オープン中でない)ファイル番号を探す
 Long FindFreeFileNo(void) {
   int i;
 
   for (i = HUMAN68K_USER_FILENO_MIN; i < FILE_MAX; i++) {
-    if (!finfo[i].is_opened) {
+    if (!IsOpened(i)) {
       return (Long)i;
     }
   }
@@ -45,8 +105,8 @@ static FILEINFO* getFileInfo(UWord fileno, Long* outErr) {
     return NULL;
   }
 
-  FILEINFO* finfop = &finfo[fileno];
-  if (!finfop->is_opened) {
+  FILEINFO* finfop = GetFinfo(fileno);
+  if (finfop == NULL) {
     *outErr = DOSE_BADF;
     return NULL;
   }
@@ -371,32 +431,24 @@ static OnmemoryFileData defaultOnmemoryFileData(void) {
   return (OnmemoryFileData){NULL, 0, 0};
 }
 
-// finfoを初期化する。
-void ClearFinfo(int fileno) {
-  FILEINFO* f = &finfo[fileno];
-
-  f->host = (HostFileInfoMember){0};
-  f->is_opened = false;
-  f->mode = OPENMODE_READ;
-  f->nest = 0;
-  f->onmemory = defaultOnmemoryFileData();
-}
-
-// オープンしたファイルの情報をfinfoに書き込む。
+// オープンしたファイルの情報を新しい実体に書き込み、ハンドルに紐づける。
+//   ハンドルが既に使用中の場合は呼び出し側で先にクローズしておくこと。
+//   実体に空きがなければ NULL を返す。
 FILEINFO* SetFinfo(Long fileno, HostFileInfoMember hostfile, FileOpenMode mode,
                    unsigned int nest) {
-  FILEINFO* f = &finfo[fileno];
+  int fcbIdx = AllocFcb();
+  if (fcbIdx < 0) return NULL;
 
+  FILEINFO* f = &ftable[fcbIdx];
   f->host = hostfile;
-  f->is_opened = true;
   f->mode = mode;
-  f->nest = nest_cnt;
+  f->nest = nest;
   f->onmemory = defaultOnmemoryFileData();
+  f->refcount = 0;  // BindHandleで1になる
 
+  BindHandle(fileno, fcbIdx);
   return f;
 }
-
-FILEINFO* GetFinfo(Long fileno) { return &finfo[fileno]; }
 
 void FreeOnmemoryFile(FILEINFO* finfop) {
   if (!finfop->onmemory.buffer) return;

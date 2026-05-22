@@ -36,7 +36,6 @@
 ULong DefaultExceptionHandler[256];
 
 EXEC_INSTRUCTION_INFO OP_info;
-FILEINFO finfo[FILE_MAX];
 const char size_char[3] = {'b', 'w', 'l'};
 Long ra[8];
 Long rd[8];
@@ -236,13 +235,11 @@ static void init_fileinfo(int fileno, FileOpenMode mode) {
 
 // ファイル管理テーブルの初期化
 static void init_all_fileinfo(void) {
+  InitFileHandleTable();  // 全ハンドルを未使用にしてから標準入出力を割り当てる
+
   init_fileinfo(HUMAN68K_STDIN, OPENMODE_READ);
   init_fileinfo(HUMAN68K_STDOUT, OPENMODE_WRITE);
   init_fileinfo(HUMAN68K_STDERR, OPENMODE_WRITE);
-
-  for (int i = HUMAN68K_STDERR + 1; i < FILE_MAX; i++) {
-    ClearFinfo(i);
-  }
 }
 
 static ULong init_env(ULong size, ULong parent) {

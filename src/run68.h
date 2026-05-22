@@ -165,13 +165,15 @@ typedef struct {
   Long position;
 } OnmemoryFileData;
 
-// 全てのメンバーが代入でコピー可能なこと
+// ファイルの実体(実機のFCBに相当)。
+//   複数のハンドルから共有されることがあり、refcountで生存を管理する。
+//   ハンドル番号→実体の対応はハンドルテーブル(htable)が保持する。
 typedef struct {
   HostFileInfoMember host;
-  bool is_opened;
   FileOpenMode mode;
   unsigned int nest;
   OnmemoryFileData onmemory;
+  int refcount;  // この実体を参照しているハンドル数(0なら未使用)
 } FILEINFO;
 
 typedef struct {
@@ -209,7 +211,6 @@ bool get_data_at_ea_noinc(int AceptAdrMode, int mode, int reg, int size,
 /* run68.c */
 extern ULong DefaultExceptionHandler[256];
 extern EXEC_INSTRUCTION_INFO OP_info;  // 命令実行情報
-extern FILEINFO finfo[FILE_MAX];       // ファイル管理テーブル
 extern Settings settings;
 extern const char size_char[3];
 extern Long ra[8];              // アドレスレジスタ
