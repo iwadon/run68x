@@ -520,15 +520,21 @@ Restart:
       return EXIT_FAILURE;
     }
     Mfree((ULong)probe);
-    if ((ULong)probe > targetChildAdr) {
+    // probe は Malloc の戻り値=ユーザ領域先頭。その手前 SIZEOF_MEMBLK が
+    // MEMBLK ヘッダ位置(=現在のフリー領域先頭)。MallocAll が返すブロックの
+    // child.address を targetChildAdr に合わせるためには、その手前にもう一つ
+    // MEMBLK ヘッダが入るので、スペーサのユーザ領域末尾が
+    // (targetChildAdr - SIZEOF_MEMBLK) に届くようにサイズを決める。
+    if ((ULong)probe + SIZEOF_MEMBLK > targetChildAdr) {
       printFmt(
           "-load=0x%x のアドレスはロード可能領域の先頭(0x%x)より低いため使用"
           "できません。\n",
           (unsigned)settings.loadAddress,
-          (unsigned)((ULong)probe + (SIZEOF_PSP - SIZEOF_MEMBLK)));
+          (unsigned)((ULong)probe + SIZEOF_MEMBLK +
+                     (SIZEOF_PSP - SIZEOF_MEMBLK)));
       return EXIT_FAILURE;
     }
-    const ULong spacerSize = targetChildAdr - (ULong)probe;
+    const ULong spacerSize = targetChildAdr - SIZEOF_MEMBLK - (ULong)probe;
     if (spacerSize != 0) {
       const Long spacer = Malloc(MALLOC_FROM_LOWER, spacerSize, humanPsp);
       if (spacer < 0) {
