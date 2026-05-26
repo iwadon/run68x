@@ -60,6 +60,7 @@ static const Settings defaultSettings = {
     DEFAULT_HIGH_MEMORY_SIZE,  // highMemorySize
 
     0,      // trapPc
+    0,      // loadAddress
     false,  // traceFunc
     false,  // debug
     false,  // readFileUtf8
@@ -86,6 +87,7 @@ static void print_usage(void) {
   const char* usage =
       "Usage: run68 [options] execute_filename [commandline]\n"
       "  -himem=<mb>  allocate high memory\n"
+      "  -load=<adr>  load .x file at the specified address (hex)\n"
       "  -f           function call trace\n"
       "  -tr <adr>    mpu instruction trap\n"
       "  -debug       run with debugger\n"
@@ -285,6 +287,39 @@ static void linkHimemToMemblkLink(ULong himemAdr, ULong himemSize,
   WriteULongSuper(OSWORK_MEMORY_END, himemAdr + himemSize);
 }
 
+// -load=<adr> オプションの解析。指定値は.x本体(.text)の先頭アドレス。
+static bool analyzeLoadAddressOption(const char* arg) {
+  const char* p = strchr(arg, '=');
+  if (!p) {
+    print("-load=<adr>には16進アドレスを指定してください。\n");
+    return false;
+  }
+  char* endptr = NULL;
+  unsigned long adr = strtoul(p + 1, &endptr, 16);
+  if (endptr == p + 1 || (endptr && *endptr)) {
+    print("-load=<adr>には16進アドレスを指定してください。\n");
+    return false;
+  }
+  if ((adr & (MEMBLK_ALIGN - 1)) != 0) {
+    printFmt("-load=<adr>のアドレスは%dバイト境界に整合させてください。\n",
+             MEMBLK_ALIGN);
+    return false;
+  }
+  if (adr < HUMAN_PSP + SIZEOF_PSP) {
+    printFmt("-load=<adr>のアドレスは0x%xより大きい値を指定してください。\n",
+             (unsigned)(HUMAN_PSP + SIZEOF_PSP));
+    return false;
+  }
+  if (adr >= BASE_ADDRESS_MAX) {
+    printFmt(
+        "-load=<adr>のアドレスは0x%xより小さい値を指定してください。\n",
+        (unsigned)BASE_ADDRESS_MAX);
+    return false;
+  }
+  settings.loadAddress = (ULong)adr;
+  return true;
+}
+
 static bool analyzeHimemOption(const char* arg) {
   static const unsigned long sizes[] = {0, 16, 32, 64, 128, 256, 384, 512, 768};
   const size_t sizes_len = sizeof(sizes) / sizeof(sizes[0]);
@@ -378,6 +413,15 @@ Restart:
           invalid_flag = true;
           break;
         }
+        case 'l': {
+          const char load[] = "-load=";
+          if (strncmp(argv[i], load, strlen(load)) == 0) {
+            if (!analyzeLoadAddressOption(argv[i])) return EXIT_FAILURE;
+            break;
+          }
+          invalid_flag = true;
+          break;
+        }
         case 'e': {
           if (strcmp(argv[i], "-exit-on-error") != 0) {
             invalid_flag = true;
@@ -460,6 +504,38 @@ Restart:
   const Long programStack =
       Malloc(MALLOC_FROM_LOWER, DEFAULT_STACK_SIZE, humanPsp);
   const ULong stackBottom = programStack + DEFAULT_STACK_SIZE;
+
+  // -load=<adr> 指定時は、プログラム本体(.text)が指定アドレスから配置される
+  // ようにスペーサブロックを確保して低位側を埋める。
+  if (settings.loadAddress != 0) {
+    // .text先頭 = child.address + (SIZEOF_PSP - SIZEOF_MEMBLK) としたいので、
+    // 目標とする child.address は loadAddress - (SIZEOF_PSP - SIZEOF_MEMBLK)。
+    const ULong targetChildAdr =
+        settings.loadAddress - (SIZEOF_PSP - SIZEOF_MEMBLK);
+    // 現在のフリー領域の先頭を 0バイト確保で測定する。
+    const Long probe = Malloc(MALLOC_FROM_LOWER, 0, humanPsp);
+    if (probe < 0) {
+      print("プロセス用のメモリを確保できません\n");
+      return EXIT_FAILURE;
+    }
+    Mfree((ULong)probe);
+    if ((ULong)probe > targetChildAdr) {
+      printFmt(
+          "-load=0x%x のアドレスはロード可能領域の先頭(0x%x)より低いため使用"
+          "できません。\n",
+          (unsigned)settings.loadAddress,
+          (unsigned)((ULong)probe + (SIZEOF_PSP - SIZEOF_MEMBLK)));
+      return EXIT_FAILURE;
+    }
+    const ULong spacerSize = targetChildAdr - (ULong)probe;
+    if (spacerSize != 0) {
+      const Long spacer = Malloc(MALLOC_FROM_LOWER, spacerSize, humanPsp);
+      if (spacer < 0) {
+        print("プロセス用のメモリを確保できません\n");
+        return EXIT_FAILURE;
+      }
+    }
+  }
 
   // ここまではメモリブロックをメインメモリから確保している。
   // 以後はハイメモリからの確保も有効にする。

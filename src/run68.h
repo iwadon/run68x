@@ -181,6 +181,7 @@ typedef struct {
   ULong highMemorySize;
 
   ULong trapPc;       // -tr MPU命令トレースを行うアドレス
+  ULong loadAddress;  // -load .xファイル(.text)をロードする先頭アドレス。0なら従来動作
   bool traceFunc;     // -f ファンクションコールトレース
   bool debug;         // -debug デバッガ有効
   bool readFileUtf8;  // -read-file-utf8
