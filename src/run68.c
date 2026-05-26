@@ -87,7 +87,7 @@ static void print_usage(void) {
   const char* usage =
       "Usage: run68 [options] execute_filename [commandline]\n"
       "  -himem=<mb>  allocate high memory\n"
-      "  -load=<adr>  load .x file at the specified address (hex)\n"
+      "  -load=<adr>  load .x file at the specified address (0x for hex)\n"
       "  -f           function call trace\n"
       "  -tr <adr>    mpu instruction trap\n"
       "  -debug       run with debugger\n"
@@ -288,16 +288,17 @@ static void linkHimemToMemblkLink(ULong himemAdr, ULong himemSize,
 }
 
 // -load=<adr> オプションの解析。指定値は.x本体(.text)の先頭アドレス。
+// 数値は 0x/0X プレフィックスがあれば16進、なければ10進として解釈する。
 static bool analyzeLoadAddressOption(const char* arg) {
   const char* p = strchr(arg, '=');
   if (!p) {
-    print("-load=<adr>には16進アドレスを指定してください。\n");
+    print("-load=<adr>にはアドレスを指定してください(16進は0xプレフィクス)。\n");
     return false;
   }
   char* endptr = NULL;
-  unsigned long adr = strtoul(p + 1, &endptr, 16);
+  unsigned long adr = strtoul(p + 1, &endptr, 0);
   if (endptr == p + 1 || (endptr && *endptr)) {
-    print("-load=<adr>には16進アドレスを指定してください。\n");
+    print("-load=<adr>にはアドレスを指定してください(16進は0xプレフィクス)。\n");
     return false;
   }
   if ((adr & (MEMBLK_ALIGN - 1)) != 0) {
