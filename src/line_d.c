@@ -148,7 +148,7 @@ static bool Add1(char code1, char code2) {
   }
 
   /* フラグの変化 */
-  sub_conditions(src_data, dest_data, result, size, true);
+  add_conditions(src_data, dest_data, result, size, true);
 
   return false;
 }
