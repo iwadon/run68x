@@ -82,7 +82,6 @@ static void Exec4(Long);
 
 #ifndef _WIN32
 static Long Write_conv(short hdl, void* buf, size_t size) {
-  Long write_len;
   FILE* fp = GetFinfo(hdl)->host.fp;
 
   if (fp == NULL) return -6;
@@ -92,7 +91,7 @@ static Long Write_conv(short hdl, void* buf, size_t size) {
     static char prev_char = 0;
     iconv_t icd = iconv_open("UTF-8", "Shift_JIS");
 
-    write_len = 0;
+    Long write_len = 0;
 
     while (size > 0) {
       char sjis_buf[2048];

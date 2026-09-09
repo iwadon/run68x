@@ -474,7 +474,7 @@ void ReadOnmemoryFile(FILEINFO* finfop, FileOpenMode openMode) {
     return;
   }
 
-  size_t sjSize;
+  size_t sjSize = 0;
   char* sjbuf = HOST_UTF8_TO_SJIS(u8buf, readSize, &sjSize);
   free(u8buf);
   if (!sjbuf) return;
