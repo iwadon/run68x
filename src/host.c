@@ -220,15 +220,15 @@ static char* absolutePath(const char* path, size_t bufsize, char* buf) {
 }
 
 static bool canonical_pathname(const char* fullpath, Human68kPathName* hpn) {
-  char* lastSlash = strrchr(fullpath, '/');
+  const char* lastSlash = strrchr(fullpath, '/');
   if (lastSlash == NULL) return false;
 
-  char* name = lastSlash + 1;
+  const char* name = lastSlash + 1;
   size_t pathLen = name - fullpath;
   if (pathLen > HUMAN68K_DIR_MAX) return false;
 
   size_t nameLen = strlen(name);  // 拡張子を含む長さなので後で差し引く
-  char* ext = strrchr(name, '.');
+  const char* ext = strrchr(name, '.');
   if (ext == NULL) ext = name + nameLen;
 
   size_t extLen = strlen(ext);
