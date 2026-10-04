@@ -82,9 +82,11 @@ static void Exec4(Long);
 
 #ifndef _WIN32
 static Long Write_conv(short hdl, void* buf, size_t size) {
-  FILE* fp = GetFinfo(hdl)->host.fp;
+  FILEINFO* finfop = GetFinfo(hdl);
+  FILE* fp = finfop->host.fp;
 
   if (fp == NULL) return -6;
+  HostSwitchIo(finfop, HOSTIO_WRITE);
 
 #ifdef USE_ICONV
   if (isatty(fileno(fp))) {
@@ -212,6 +214,7 @@ static Long DosFgetc(ULong param) {
   }
   return (read_len == 0) ? DOSE_ILGFNC : c;
 #else
+  HostSwitchIo(finfop, HOSTIO_READ);
   int ch = fgetc(finfop->host.fp);
   return (0 <= ch && ch <= 0xff) ? ch : DOSE_ILGFNC;
 #endif
@@ -1062,6 +1065,7 @@ static Long Fgets(Long adr, short hdl) {
   }
 #else
   {
+    HostSwitchIo(finfop, HOSTIO_READ);
     if (fgets(buf, max, finfop->host.fp) == NULL) return -1;
     char* s = buf;
     char* d = buf;
@@ -2010,6 +2014,7 @@ static Long Getfcb(short fhdl) {
             fcb[3][67] = (unsigned char)(size & 0x000000ff);
           }
           fseek(fi->host.fp, i, SEEK_SET);
+          fi->host.lastIo = HOSTIO_NONE;
 #endif
 
           // 日時

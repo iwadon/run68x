@@ -154,8 +154,17 @@ typedef struct {
   HANDLE handle;
 } HostFileInfoMember;
 #else
+// 更新ストリーム(r+b)では、読み込みと書き込みを切り替える際に
+// 位置決め関数の呼び出しが必要なため、直前の操作を記録する。
+typedef enum {
+  HOSTIO_NONE,
+  HOSTIO_READ,
+  HOSTIO_WRITE,
+} HostIoDirection;
+
 typedef struct {
   FILE* fp;
+  HostIoDirection lastIo;
 } HostFileInfoMember;
 #endif
 

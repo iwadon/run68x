@@ -291,8 +291,21 @@ static FILE* fileno_to_fp(int fileno) {
 
 // 標準入出力ファイルに関するFINFO構造体の環境依存メンバーを返す。
 HostFileInfoMember GetStandardHostfile_generic(int fileno) {
-  HostFileInfoMember hostfile = {fileno_to_fp(fileno)};
+  HostFileInfoMember hostfile = {fileno_to_fp(fileno), HOSTIO_NONE};
   return hostfile;
+}
+#endif
+
+#ifndef _WIN32
+// 読み込みと書き込みの方向が切り替わるときに、位置決め関数を呼び出す。
+//   Cの規格では更新ストリームの出力→入力、入力→出力の切り替え時に
+//   fflush(出力→入力のみ)またはfseek等が必須であり、省略するとglibcで
+//   バッファの内容が不整合になる。
+//   連続した同方向の操作では呼び出さない(性能のため)。
+void HostSwitchIo(FILEINFO* finfop, HostIoDirection dir) {
+  if (finfop->host.lastIo != HOSTIO_NONE && finfop->host.lastIo != dir)
+    fseek(finfop->host.fp, 0, SEEK_CUR);
+  finfop->host.lastIo = dir;
 }
 #endif
 
@@ -358,6 +371,7 @@ Long CreateNewfile_generic(char* path, HostFileInfoMember* hostfile,
   FILE* fp = fopen(hostpath, "w+b");
   if (fp == NULL) return toDosError(errno, DOSE_ILGFNAME);
   hostfile->fp = fp;
+  hostfile->lastIo = HOSTIO_NONE;
   return 0;
 }
 #endif
@@ -382,6 +396,7 @@ Long OpenFile_generic(char* path, HostFileInfoMember* hostfile,
   }
 
   hostfile->fp = fp;
+  hostfile->lastIo = HOSTIO_NONE;
   return 0;
 }
 #endif
@@ -413,6 +428,7 @@ static Long read_from_tty(char* buffer, ULong length) {
 Long ReadFileOrTty_generic(FILEINFO* finfop, char* buffer, ULong length) {
   if (isatty(fileno(finfop->host.fp))) return read_from_tty(buffer, length);
 
+  HostSwitchIo(finfop, HOSTIO_READ);
   return (Long)fread(buffer, 1, length, finfop->host.fp);
 }
 #endif
@@ -421,6 +437,7 @@ Long ReadFileOrTty_generic(FILEINFO* finfop, char* buffer, ULong length) {
 Long SeekFile_generic(FILEINFO* finfop, Long offset, FileSeekMode mode) {
   static const int seekModes[] = {SEEK_SET, SEEK_CUR, SEEK_END};
 
+  finfop->host.lastIo = HOSTIO_NONE;
   if (fseek(finfop->host.fp, offset, seekModes[mode]) != 0)
     return DOSE_CANTSEEK;
 

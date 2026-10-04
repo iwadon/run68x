@@ -85,6 +85,10 @@ bool PathIsFileSpec_generic(const char* path);
 #define HOST_PATH_IS_FILE_SPEC PathIsFileSpec_generic
 #endif
 
+#ifndef _WIN32
+void HostSwitchIo(FILEINFO* finfop, HostIoDirection dir);
+#endif
+
 #ifndef HOST_GET_STANDARD_HOSTFILE
 #define HOST_GET_STANDARD_HOSTFILE_GENERIC
 HostFileInfoMember GetStandardHostfile_generic(int fileno);
