@@ -1,0 +1,65 @@
+# weir CI 設定 (ローカルのリポジトリサーバ兼 CI。仕様は ~/src/weir/README.md)。
+# mod ブランチ専用で、本家 (kg68k/run68x) には送らない。本家への PR は
+# origin/main から作ったトピックブランチで出し、このファイルのコミットは含めない。
+#
+# configure → build → test を、macOS ホスト・Ubuntu コンテナ・Windows (ssh 委譲) の
+# 3 環境で毎 push 実行する。GitHub Actions (.github/workflows/) はそのまま残す。
+
+paths-ignore:
+  - doc/**
+  - "**/*.md"
+
+environments:
+  - executor: host
+  - executor: container
+    image: ubuntu:26.04
+  # Windows (MSVC) は mcc.1 / deft-c と同じく、host executor のステップから
+  # winbuild (~/.ssh/config のエイリアス) へ ssh で委譲する。ソースは
+  # git archive | tar で転送し、コミットごとに C:\build\run68x-<sha12> を作る。
+  # 成功時は末尾で削除し、失敗時は調査用に残す。
+  - executor: host
+    name: windows
+
+steps:
+  - name: install dependencies
+    run: |
+      apt-get update
+      apt-get install -y --no-install-recommends build-essential cmake ninja-build
+    only: [container]
+  - name: configure
+    run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    only: [host, container]
+  - name: build
+    run: cmake --build build
+    only: [host, container]
+  - name: test
+    run: ctest --test-dir build --output-on-failure
+    only: [host, container]
+
+  # --- windows (ssh 経由) ---
+  - name: transfer
+    run: |
+      SHA=$(printf %.12s "$WEIR_COMMIT")
+      git archive --format=tar --prefix="run68x-$SHA/" HEAD \
+        | ssh winbuild "rmdir /s /q C:\build\run68x-$SHA 2>nul & mkdir C:\build 2>nul & tar -x -C C:\build"
+    only: [windows]
+  - name: configure (msvc)
+    run: |
+      SHA=$(printf %.12s "$WEIR_COMMIT")
+      ssh winbuild "call \"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat\" && cmake -S C:\build\run68x-$SHA -B C:\build\run68x-$SHA\build -G Ninja -DCMAKE_BUILD_TYPE=Release"
+    only: [windows]
+  - name: build (msvc)
+    run: |
+      SHA=$(printf %.12s "$WEIR_COMMIT")
+      ssh winbuild "call \"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat\" && cmake --build C:\build\run68x-$SHA\build"
+    only: [windows]
+  - name: test (msvc)
+    run: |
+      SHA=$(printf %.12s "$WEIR_COMMIT")
+      ssh winbuild "call \"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat\" && ctest --test-dir C:\build\run68x-$SHA\build --output-on-failure"
+    only: [windows]
+  - name: cleanup (msvc)
+    run: |
+      SHA=$(printf %.12s "$WEIR_COMMIT")
+      ssh winbuild "rmdir /s /q C:\build\run68x-$SHA"
+    only: [windows]
