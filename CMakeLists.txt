@@ -88,3 +88,13 @@ if(EMSCRIPTEN)
 endif()
 
 INSTALL(TARGETS run68 RUNTIME DESTINATION bin)
+
+enable_testing()
+
+add_test(NAME dos_device
+  COMMAND ${CMAKE_COMMAND}
+    -DRUN68=$<TARGET_FILE:run68>
+    -DPROGRAM=dos_device.x
+    -DEXPECTED=expected.txt
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_test.cmake
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/dos_device)
