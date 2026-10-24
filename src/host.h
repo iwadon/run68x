@@ -109,6 +109,13 @@ Long OpenFile_generic(char* path, HostFileInfoMember* hostfile,
 #define HOST_OPEN_FILE OpenFile_generic
 #endif
 
+#ifndef HOST_OPEN_DEVICE
+#define HOST_OPEN_DEVICE_GENERIC
+Long OpenDevice_generic(HostDeviceType type, HostFileInfoMember* hostfile,
+                        FileOpenMode mode);
+#define HOST_OPEN_DEVICE OpenDevice_generic
+#endif
+
 #ifndef HOST_CLOSE_FILE
 #define HOST_CLOSE_FILE_GENERIC
 bool CloseFile_generic(FILEINFO* finfop);

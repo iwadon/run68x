@@ -51,6 +51,10 @@ Long OpenFile_win32(char* path, HostFileInfoMember* hostfile,
                     FileOpenMode mode);
 #define HOST_OPEN_FILE OpenFile_win32
 
+Long OpenDevice_win32(HostDeviceType type, HostFileInfoMember* hostfile,
+                      FileOpenMode mode);
+#define HOST_OPEN_DEVICE OpenDevice_win32
+
 bool CloseFile_win32(FILEINFO* finfop);
 #define HOST_CLOSE_FILE CloseFile_win32
 

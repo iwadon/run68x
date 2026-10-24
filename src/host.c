@@ -401,6 +401,27 @@ Long OpenFile_generic(char* path, HostFileInfoMember* hostfile,
 }
 #endif
 
+#ifdef HOST_OPEN_DEVICE_GENERIC
+// デバイスを開く
+Long OpenDevice_generic(HostDeviceType type, HostFileInfoMember* hostfile,
+                        FileOpenMode mode) {
+  FILE* fp;
+
+  if (type == HOSTDEVICE_CONSOLE) {
+    // 標準ストリームを共有する(クローズしても標準ストリームは閉じない)
+    fp = (mode == OPENMODE_READ) ? stdin : stdout;
+  } else {
+    static const char mdstr[][4] = {"rb", "r+b", "r+b"};
+    fp = fopen("/dev/null", mdstr[mode]);
+    if (fp == NULL) return toDosError(errno, DOSE_NOENT);
+  }
+
+  hostfile->fp = fp;
+  hostfile->lastIo = HOSTIO_NONE;
+  return 0;
+}
+#endif
+
 #ifdef HOST_CLOSE_FILE_GENERIC
 // ファイルを閉じる
 bool CloseFile_generic(FILEINFO* finfop) {

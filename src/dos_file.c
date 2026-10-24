@@ -211,6 +211,55 @@ Long DosCreate(ULong param) {
   return CreateNewfile(file, atr, false);
 }
 
+// Human68kの組み込みデバイス
+typedef struct {
+  const char* name;
+  UWord attribute;  // デバイスヘッダの属性
+  HostDeviceType hostDevice;
+} Human68kDevice;
+
+static const Human68kDevice devices[] = {
+    {"NUL", 0x8024, HOSTDEVICE_NULL},
+    {"CON", 0x8003, HOSTDEVICE_CONSOLE},
+    {"AUX", 0x8000, HOSTDEVICE_NULL},
+    {"PRN", 0x8000, HOSTDEVICE_NULL},
+    {"CLOCK", 0x8008, HOSTDEVICE_NULL},
+};
+
+// パス名のファイル名部(拡張子を除く)がデバイス名と一致するデバイスを探す。
+//   Human68kと同様に、ドライブ名とディレクトリ名は判定に使わず、
+//   大文字と小文字を区別しない。
+static const Human68kDevice* findDevice(char* path) {
+  const char* name = get_filename(path);
+  size_t len = strcspn(name, ".");
+  if (len == 0 || len > 8) return NULL;
+
+  for (size_t i = 0; i < sizeof(devices) / sizeof(devices[0]); i++) {
+    const char* devname = devices[i].name;
+    if (strlen(devname) != len) continue;
+
+    size_t j = 0;
+    while (j < len && toupper((unsigned char)name[j]) == devname[j]) j++;
+    if (j == len) return &devices[i];
+  }
+  return NULL;
+}
+
+// デバイスを開く
+static Long openDevice(int fileno, const Human68kDevice* dev,
+                       FileOpenMode rwMode) {
+  // CLOCKデバイス(属性bit3)はオープンできない
+  if (dev->attribute & 0x0008) return DOSE_ILGFNAME;
+
+  HostFileInfoMember hostfile;
+  Long err = HOST_OPEN_DEVICE(dev->hostDevice, &hostfile, rwMode);
+  if (err != 0) return err;
+
+  FILEINFO* finfop = SetFinfo(fileno, hostfile, rwMode, nest_cnt);
+  finfop->ioctrl = (dev->attribute & 0xff00) | (dev->attribute & 0x3f) | 0xc0;
+  return fileno;
+}
+
 // 既存ファイルを開く
 Long OpenExistingFile(ULong file, UWord mode) {
   FileOpenMode rwMode = mode & 0x000f;
@@ -224,6 +273,9 @@ Long OpenExistingFile(ULong file, UWord mode) {
 
   int fileno = FindFreeFileNo();
   if (fileno < 0) return DOSE_MFILE;
+
+  const Human68kDevice* dev = findDevice(path);
+  if (dev) return openDevice(fileno, dev, rwMode);
 
   HostFileInfoMember hostfile;
   Long err = HOST_OPEN_FILE(path, &hostfile, rwMode);
@@ -444,6 +496,7 @@ FILEINFO* SetFinfo(Long fileno, HostFileInfoMember hostfile, FileOpenMode mode,
   f->mode = mode;
   f->nest = nest;
   f->onmemory = defaultOnmemoryFileData();
+  f->ioctrl = 0;
   f->refcount = 0;  // BindHandleで1になる
 
   BindHandle(fileno, fcbIdx);

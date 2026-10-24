@@ -873,11 +873,22 @@ static Long Ioctrl(short mode, Long stack_adr) {
   short fno;
 
   switch (mode) {
-    case 0:
-      fno = (short)mem_get(stack_adr, S_WORD);
-      if (fno == 0) return (0x80C1);
-      if (fno == 1 || fno == 2) return (0x80C2);
+    case 0: {
+      UWord fileno = (UWord)mem_get(stack_adr, S_WORD);
+      if (fileno >= FILE_MAX) return DOSE_MFILE;
+
+      FILEINFO* finfop = GetFinfo(fileno);
+      if (finfop == NULL) return DOSE_BADF;  // オープンされていない
+
+      if (finfop->ioctrl != 0) return finfop->ioctrl;  // DOS _OPENしたデバイス
+      if (fileno == 0) return (0x80C1);
+      if (fileno == 1 || fileno == 2) return (0x80C2);
+#ifdef _WIN32
+      // ホストの予約デバイス名(COM1など)で開いたキャラクタデバイス
+      if (GetFileType(finfop->host.handle) == FILE_TYPE_CHAR) return 0x80C0;
+#endif
       return (0);
+    }
     case 6:
       fno = (short)mem_get(stack_adr, S_WORD);
       if (fno == 0) return (0xFF); /* 入力可 */

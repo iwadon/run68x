@@ -174,6 +174,12 @@ typedef struct {
   Long position;
 } OnmemoryFileData;
 
+// DOS _OPENでデバイスを開くときに、ホスト側で割り当てる入出力先。
+typedef enum {
+  HOSTDEVICE_NULL,     // 入力は常にEOF、出力は捨てる
+  HOSTDEVICE_CONSOLE,  // ホストの標準入出力
+} HostDeviceType;
+
 // ファイルの実体(実機のFCBに相当)。
 //   複数のハンドルから共有されることがあり、refcountで生存を管理する。
 //   ハンドル番号→実体の対応はハンドルテーブル(htable)が保持する。
@@ -182,6 +188,7 @@ typedef struct {
   FileOpenMode mode;
   unsigned int nest;
   OnmemoryFileData onmemory;
+  UWord ioctrl;  // デバイスならDOS _IOCTRL(0)の値、ファイルなら0
   int refcount;  // この実体を参照しているハンドル数(0なら未使用)
 } FILEINFO;
 

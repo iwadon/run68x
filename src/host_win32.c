@@ -196,6 +196,18 @@ Long OpenFile_win32(char* path, HostFileInfoMember* hostfile,
   return 0;
 }
 
+// デバイスを開く
+Long OpenDevice_win32(HostDeviceType type, HostFileInfoMember* hostfile,
+                      FileOpenMode mode) {
+  if (type == HOSTDEVICE_CONSOLE) {
+    // 標準ハンドルを共有する(クローズしても標準ハンドルは閉じない)
+    hostfile->handle = GetStdHandle(
+        (mode == OPENMODE_READ) ? STD_INPUT_HANDLE : STD_OUTPUT_HANDLE);
+    return 0;
+  }
+  return OpenFile_win32("NUL", hostfile, mode);
+}
+
 // ファイルを閉じる
 bool CloseFile_win32(FILEINFO* finfop) {
   HANDLE hFile = finfop->host.handle;
