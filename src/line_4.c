@@ -848,11 +848,12 @@ static bool Trap(char code) {
     unsigned int vecno = VECNO_TRAP0 + no;
     ULong adr = ReadULongSuper(vecno * 4);
     if (adr != DefaultExceptionHandler[vecno]) {
+      UWord saveSr = sr;
       SR_S_ON();
       ra[7] -= 4;
       mem_set(ra[7], pc, S_LONG);
       ra[7] -= 2;
-      mem_set(ra[7], sr, S_WORD);
+      mem_set(ra[7], saveSr, S_WORD);
       pc = adr;
       return false;
     }

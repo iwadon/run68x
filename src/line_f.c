@@ -1293,6 +1293,7 @@ static void Pow(Long d0, Long d1, Long d2, Long d3) {
 */
 static bool fefunc(UByte code) {
   short save_s = SR_S_REF();
+  UWord saveSr = sr;
   SR_S_ON();
 
   /* F系列のベクタが書き換えられているかどうか検査 */
@@ -1301,7 +1302,7 @@ static bool fefunc(UByte code) {
     ra[7] -= 4;
     mem_set(ra[7], pc - 2, S_LONG);
     ra[7] -= 2;
-    mem_set(ra[7], sr, S_WORD);
+    mem_set(ra[7], saveSr, S_WORD);
     pc = adr;
     return false;
   }

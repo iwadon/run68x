@@ -28,6 +28,7 @@ NORETURN void run68_abort(Long adr);
 
 static bool linea(char *pc_ptr) {
   short save_s = SR_S_REF();
+  UWord saveSr = sr;
   SR_S_ON();
 
   ULong adr = mem_get(VECNO_ALINE * 4, S_LONG);
@@ -35,7 +36,7 @@ static bool linea(char *pc_ptr) {
     ra[7] -= 4;
     mem_set(ra[7], pc, S_LONG);
     ra[7] -= 2;
-    mem_set(ra[7], sr, S_WORD);
+    mem_set(ra[7], saveSr, S_WORD);
     pc = adr;
     return false;
   }
