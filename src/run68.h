@@ -76,6 +76,7 @@
 #define TRAP6_WORK 0x26FF0000 /* TRAP割り込み処理先等のワーク領域 */
 #define TRAP7_WORK 0x27FF0000 /* TRAP割り込み処理先等のワーク領域 */
 #define TRAP8_WORK 0x28FF0000 /* TRAP割り込み処理先等のワーク領域 */
+#define TRAP9_WORK 0x29FF0000 /* TRAP割り込み処理先等のワーク領域 */
 
 #define VECNO_VDISP 0x46
 #define VECNO_CRTCRAS 0x4e

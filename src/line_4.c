@@ -844,7 +844,7 @@ static bool Trap(char code) {
     return iocs_call();
   }
 
-  if (no <= 8) {
+  if (no <= 9) {
     unsigned int vecno = VECNO_TRAP0 + no;
     ULong adr = ReadULongSuper(vecno * 4);
     if (adr != DefaultExceptionHandler[vecno]) {

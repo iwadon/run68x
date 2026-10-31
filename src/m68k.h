@@ -65,6 +65,7 @@ typedef struct {
 #define VECNO_TRAP6 0x26
 #define VECNO_TRAP7 0x27
 #define VECNO_TRAP8 0x28
+#define VECNO_TRAP9 0x29
 
 // 浮動小数点数
 typedef union {

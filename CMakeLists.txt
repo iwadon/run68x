@@ -98,3 +98,11 @@ add_test(NAME dos_device
     -DEXPECTED=expected.txt
     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_test.cmake
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/dos_device)
+
+add_test(NAME trap9
+  COMMAND ${CMAKE_COMMAND}
+    -DRUN68=$<TARGET_FILE:run68>
+    -DPROGRAM=./trap9.x
+    -DEXPECTED=expected.txt
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_test.cmake
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trap9)

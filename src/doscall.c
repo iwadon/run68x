@@ -1912,17 +1912,18 @@ static Long Intvcs(UWord intno, Long adr) {
   short save_s;
 
   if (intno >= 0xFF00) { /* DOSCALL */
-    intno &= 0xFF;
-    adr2 = 0x1800 + intno * 4;
-    save_s = SR_S_REF();
-    SR_S_ON();
-    mae = mem_get(adr2, S_LONG);
-    mem_set(adr2, adr, S_LONG);
-    if (save_s == 0) SR_S_OFF();
-    return (mae);
+    adr2 = 0x1800 + (intno & 0xFF) * 4;
+  } else if (intno <= 0xFF) { /* 例外ベクタ */
+    adr2 = intno * 4;
+  } else {
+    return (0);
   }
-
-  return (0);
+  save_s = SR_S_REF();
+  SR_S_ON();
+  mae = mem_get(adr2, S_LONG);
+  mem_set(adr2, adr, S_LONG);
+  if (save_s == 0) SR_S_OFF();
+  return (mae);
 }
 
 /*
