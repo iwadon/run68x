@@ -106,3 +106,11 @@ add_test(NAME trap9
     -DEXPECTED=expected.txt
     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_test.cmake
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trap9)
+
+add_test(NAME ioctrl_dup2
+  COMMAND ${CMAKE_COMMAND}
+    -DRUN68=$<TARGET_FILE:run68>
+    -DPROGRAM=./ioctrl_dup2.x
+    -DEXPECTED=expected.txt
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_test.cmake
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/ioctrl_dup2)

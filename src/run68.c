@@ -233,7 +233,11 @@ EndOfFunc:
 
 static void init_fileinfo(int fileno, FileOpenMode mode) {
   HostFileInfoMember hostfile = HOST_GET_STANDARD_HOSTFILE(fileno);
-  SetFinfo(fileno, hostfile, mode, 0);
+  FILEINFO* finfop = SetFinfo(fileno, hostfile, mode, 0);
+  // 起動時の標準入出力はコンソール。DOS _IOCTRL(MD=0)は実体のこの値を返すので、
+  // _DUP2でファイルに付け替えたハンドルはファイルと答える。
+  if (finfop != NULL)
+    finfop->ioctrl = (fileno == HUMAN68K_STDIN) ? 0x80C1 : 0x80C2;
 }
 
 // ファイル管理テーブルの初期化

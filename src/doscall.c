@@ -880,9 +880,8 @@ static Long Ioctrl(short mode, Long stack_adr) {
       FILEINFO* finfop = GetFinfo(fileno);
       if (finfop == NULL) return DOSE_BADF;  // オープンされていない
 
-      if (finfop->ioctrl != 0) return finfop->ioctrl;  // DOS _OPENしたデバイス
-      if (fileno == 0) return (0x80C1);
-      if (fileno == 1 || fileno == 2) return (0x80C2);
+      // DOS _OPENしたデバイスと起動時の標準入出力
+      if (finfop->ioctrl != 0) return finfop->ioctrl;
 #ifdef _WIN32
       // ホストの予約デバイス名(COM1など)で開いたキャラクタデバイス
       if (GetFileType(finfop->host.handle) == FILE_TYPE_CHAR) return 0x80C0;
