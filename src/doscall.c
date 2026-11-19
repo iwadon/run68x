@@ -1412,8 +1412,11 @@ static void build_files_cache_slot_posix(struct files_cache_slot* slot,
     /* エントリ情報をセットする */
     struct files_cache_slot_match_entry* match_entry =
         &slot->entries[slot->count];
-    strncpy(match_entry->name, entry->d_name, sizeof(match_entry->name) - 1);
-    match_entry->name[sizeof(match_entry->name) - 1] = '\0';
+    size_t name_len = strlen(entry->d_name);
+    if (name_len >= sizeof(match_entry->name))
+      name_len = sizeof(match_entry->name) - 1;
+    memcpy(match_entry->name, entry->d_name, name_len);
+    match_entry->name[name_len] = '\0';
     match_entry->attr = 0;
     if (S_ISDIR(st.st_mode)) match_entry->attr |= 0x10;     /* ディレクトリ */
     if (!(st.st_mode & S_IWUSR)) match_entry->attr |= 0x01; /* 読み取り専用 */
